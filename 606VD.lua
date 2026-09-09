@@ -75,18 +75,21 @@ local Config = {
         FieldOfView = 85
     },
     Palette = {
-        VicePink = Color3.fromRGB(255, 42, 133),
-        ViceCyan = Color3.fromRGB(0, 240, 255),
-        VicePurple = Color3.fromRGB(150, 50, 230),
-        Killer = Color3.fromRGB(255, 45, 65),
+        RedPrimary = Color3.fromRGB(255, 38, 58),
+        RedDark = Color3.fromRGB(180, 20, 38),
+        RedGlow = Color3.fromRGB(255, 75, 95),
+        Killer = Color3.fromRGB(255, 38, 58),
         Survivor = Color3.fromRGB(0, 240, 255),
-        Injured = Color3.fromRGB(255, 190, 30),
-        Downed = Color3.fromRGB(255, 95, 10),
-        Hooked = Color3.fromRGB(255, 115, 220),
-        Generator = Color3.fromRGB(255, 42, 133),
+        Injured = Color3.fromRGB(255, 180, 30),
+        Downed = Color3.fromRGB(255, 90, 10),
+        Hooked = Color3.fromRGB(255, 50, 70),
+        Generator = Color3.fromRGB(255, 38, 58),
         Gate = Color3.fromRGB(240, 245, 255),
         Window = Color3.fromRGB(70, 200, 255),
-        Hatch = Color3.fromRGB(255, 215, 0)
+        Hatch = Color3.fromRGB(255, 215, 0),
+        VicePink = Color3.fromRGB(255, 38, 58),
+        ViceCyan = Color3.fromRGB(255, 75, 95),
+        VicePurple = Color3.fromRGB(180, 20, 38)
     }
 }
 
@@ -583,7 +586,7 @@ local function ProcessWorldESP()
                 RemoveHighlight(gen)
             elseif anchor and anchor:IsA("BasePart") and Config.Visuals.GeneratorESP then
                 local cp = math.clamp(prog, 0, 100)
-                local col = Config.Palette.VicePink:Lerp(Config.Palette.ViceCyan, cp / 100)
+                local col = Config.Palette.RedDark:Lerp(Config.Palette.RedPrimary, cp / 100)
                 local dist = myPos and math.floor((anchor.Position - myPos).Magnitude) or 0
                 local text = string.format("GEN [%.1f%%]", prog)
                 if Config.Visuals.ShowDistance then
@@ -1553,20 +1556,27 @@ local function UnloadScript()
     end)
 end
 
--- Luxury Palette Hierarchy (GTA 6 Obsidian & Neon)
-local C_ONYX       = Color3.fromRGB(9, 7, 15)
-local C_SURFACE    = Color3.fromRGB(15, 12, 24)
-local C_CONTAINER  = Color3.fromRGB(22, 17, 34)
-local C_CONTAINER_HOVER = Color3.fromRGB(29, 23, 46)
-local C_BORDER     = Color3.fromRGB(33, 26, 50)
-local C_BORDER_DIM = Color3.fromRGB(24, 19, 36)
-local C_PINK       = Config.Palette.VicePink
-local C_CYAN       = Config.Palette.ViceCyan
-local C_PURPLE     = Config.Palette.VicePurple
-local C_WHITE      = Color3.fromRGB(246, 244, 252)
-local C_MUTED      = Color3.fromRGB(115, 105, 140)
-local C_MUTED_LIGHT= Color3.fromRGB(155, 146, 178)
-local C_GREEN      = Color3.fromRGB(0, 245, 160)
+-- Premium Red & Black Luxury Palette Hierarchy
+local C_BLACK          = Color3.fromRGB(10, 8, 12)       -- Deep Obsidian Matte
+local C_SURFACE        = Color3.fromRGB(15, 12, 17)      -- Dark Carbon Header & Sidebar
+local C_CONTAINER      = Color3.fromRGB(22, 17, 24)      -- Rich Charcoal Container Cards
+local C_CONTAINER_HOVER= Color3.fromRGB(32, 22, 32)      -- Warm Ruby Hover State
+local C_CONTAINER_ACT  = Color3.fromRGB(38, 18, 26)      -- Glowing Active Background
+local C_BORDER         = Color3.fromRGB(50, 20, 28)      -- Deep Ruby 1px Framing
+local C_BORDER_DIM     = Color3.fromRGB(32, 14, 20)      -- Dark Underline Accent
+local C_RED            = Color3.fromRGB(255, 38, 58)     -- Radiant Crimson / Blood Red
+local C_RED_DARK       = Color3.fromRGB(180, 20, 38)     -- Deep Velvet Crimson
+local C_RED_GLOW       = Color3.fromRGB(255, 75, 95)     -- Neon Ruby Highlight
+local C_WHITE          = Color3.fromRGB(252, 250, 255)   -- Pure Diamond White
+local C_MUTED          = Color3.fromRGB(135, 125, 142)   -- Sleek Metallic Platinum
+local C_MUTED_LIGHT    = Color3.fromRGB(175, 166, 185)   -- Crisp Secondary Label
+local C_GREEN          = Color3.fromRGB(0, 245, 140)     -- Tactical Emerald Status
+
+-- Backwards compatibility aliases
+local C_ONYX   = C_BLACK
+local C_PINK   = C_RED
+local C_CYAN   = C_RED_GLOW
+local C_PURPLE = C_RED_DARK
 
 -- Outer Shell Frame
 local Shell = Instance.new("Frame")
@@ -1589,9 +1599,9 @@ TopRibbon.BorderSizePixel = 0
 
 local RibbonGrad = Instance.new("UIGradient", TopRibbon)
 RibbonGrad.Color = ColorSequence.new({
-    ColorSequenceKeypoint.new(0, C_PINK),
-    ColorSequenceKeypoint.new(0.48, C_PURPLE),
-    ColorSequenceKeypoint.new(1, C_CYAN)
+    ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 38, 58)),
+    ColorSequenceKeypoint.new(0.5, Color3.fromRGB(160, 16, 32)),
+    ColorSequenceKeypoint.new(1, Color3.fromRGB(255, 60, 80))
 })
 
 -- Header Bar
@@ -1613,7 +1623,7 @@ local BrandPill = Instance.new("Frame", Header)
 BrandPill.Name = "BrandPill"
 BrandPill.Size = UDim2.new(0, 60, 0, 26)
 BrandPill.Position = UDim2.new(0, 16, 0.5, -13)
-BrandPill.BackgroundColor3 = C_CONTAINER
+BrandPill.BackgroundColor3 = Color3.fromRGB(26, 14, 20)
 BrandPill.BorderSizePixel = 0
 Instance.new("UICorner", BrandPill).CornerRadius = UDim.new(0, 6)
 
@@ -1651,7 +1661,7 @@ MainTitle.TextSize = 13
 MainTitle.TextXAlignment = Enum.TextXAlignment.Left
 
 local SubTitle = Instance.new("TextLabel", Header)
-SubTitle.Text = "PRO TACTICAL ENGINE // 2026"
+SubTitle.Text = "PREMIUM SUITE // RED & BLACK EDITION"
 SubTitle.Size = UDim2.new(0, 180, 0, 14)
 SubTitle.Position = UDim2.new(0, 98, 0.5, 3)
 SubTitle.BackgroundTransparency = 1
@@ -1912,19 +1922,22 @@ end
 MakeDraggable(Shell, Header)
 MakeDraggable(MobileBadge, MobileBadge)
 
--- Toggle UI Animation Engine
+-- Toggle UI Animation Engine (Ultra Smooth Quart Easing)
 local WindowOpen = true
 local function ToggleUI()
     WindowOpen = not WindowOpen
     if WindowOpen then
         Shell.Visible = true
-        Shell.Size = UDim2.new(0, 640, 0, 400)
-        Services.Tween:Create(Shell, TweenInfo.new(0.24, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-            Size = UDim2.new(0, 670, 0, 425)
+        Shell.Size = UDim2.new(0, 635, 0, 395)
+        Shell.BackgroundTransparency = 0.3
+        Services.Tween:Create(Shell, TweenInfo.new(0.28, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
+            Size = UDim2.new(0, 670, 0, 425),
+            BackgroundTransparency = 0
         }):Play()
     else
-        local tw = Services.Tween:Create(Shell, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
-            Size = UDim2.new(0, 630, 0, 385)
+        local tw = Services.Tween:Create(Shell, TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
+            Size = UDim2.new(0, 630, 0, 385),
+            BackgroundTransparency = 0.5
         })
         tw:Play()
         tw.Completed:Connect(function()
@@ -1951,6 +1964,8 @@ local TabList = {}
 local Builder = {}
 
 function Builder:Tab(name, description)
+    local tabIndex = #TabList + 1
+
     local btn = Instance.new("TextButton", TabScroll)
     btn.Size = UDim2.new(1, 0, 0, 32)
     btn.BackgroundColor3 = C_CONTAINER
@@ -1963,19 +1978,28 @@ function Builder:Tab(name, description)
     btn.BorderSizePixel = 0
     Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 6)
 
+    local btnNotch = Instance.new("Frame", btn)
+    btnNotch.Size = UDim2.new(0, 2, 0, 14)
+    btnNotch.Position = UDim2.new(0, 2, 0.5, -7)
+    btnNotch.BackgroundColor3 = C_RED
+    btnNotch.BackgroundTransparency = 1
+    btnNotch.BorderSizePixel = 0
+    Instance.new("UICorner", btnNotch).CornerRadius = UDim.new(1, 0)
+
     local page = Instance.new("ScrollingFrame", Content)
     page.Name = name .. "_PAGE"
     page.Size = UDim2.new(1, 0, 1, 0)
+    page.Position = UDim2.new(0, 0, 0, 0)
     page.BackgroundTransparency = 1
     page.ScrollBarThickness = 2
-    page.ScrollBarImageColor3 = C_PINK
+    page.ScrollBarImageColor3 = C_RED
     page.CanvasSize = UDim2.new(0, 0, 0, 0)
     page.Visible = false
 
     -- Section Header inside each page
     local pageHeader = Instance.new("Frame", page)
     pageHeader.Name = "PageHeader"
-    pageHeader.Size = UDim2.new(1, -6, 0, 36)
+    pageHeader.Size = UDim2.new(1, -6, 0, 38)
     pageHeader.BackgroundTransparency = 1
 
     local pageTitle = Instance.new("TextLabel", pageHeader)
@@ -1989,7 +2013,7 @@ function Builder:Tab(name, description)
     pageTitle.TextXAlignment = Enum.TextXAlignment.Left
 
     local pageSub = Instance.new("TextLabel", pageHeader)
-    pageSub.Text = description or "SYSTEM CONFIGURATION & TELEMETRY"
+    pageSub.Text = description or "SYSTEM CONFIGURATION"
     pageSub.Size = UDim2.new(1, 0, 0, 14)
     pageSub.Position = UDim2.new(0, 2, 0, 16)
     pageSub.BackgroundTransparency = 1
@@ -2013,27 +2037,39 @@ function Builder:Tab(name, description)
     local function Switch()
         for _, t in ipairs(TabList) do
             t.Page.Visible = false
-            Services.Tween:Create(t.Btn, TweenInfo.new(0.15), {
+            Services.Tween:Create(t.Btn, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
                 TextColor3 = C_MUTED,
                 BackgroundTransparency = 1
             }):Play()
+            if t.Notch then
+                Services.Tween:Create(t.Notch, TweenInfo.new(0.18), {BackgroundTransparency = 1}):Play()
+            end
         end
+
+        page.Position = UDim2.new(0, 0, 0, 8)
         page.Visible = true
-        Services.Tween:Create(btn, TweenInfo.new(0.15), {
-            TextColor3 = C_PINK,
-            BackgroundTransparency = 0.85,
-            BackgroundColor3 = C_PINK
+        Services.Tween:Create(page, TweenInfo.new(0.22, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+            Position = UDim2.new(0, 0, 0, 0)
         }):Play()
-        Services.Tween:Create(TabIndicator, TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-            Position = UDim2.new(0, 4, 0, btn.Position.Y.Offset + 6)
+
+        Services.Tween:Create(btn, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+            TextColor3 = C_RED,
+            BackgroundTransparency = 0.82,
+            BackgroundColor3 = C_RED
+        }):Play()
+        Services.Tween:Create(btnNotch, TweenInfo.new(0.18), {BackgroundTransparency = 0}):Play()
+
+        local targetY = 34 + (tabIndex - 1) * 36
+        Services.Tween:Create(TabIndicator, TweenInfo.new(0.24, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
+            Position = UDim2.new(0, 4, 0, targetY)
         }):Play()
     end
 
     btn.MouseEnter:Connect(function()
         if not page.Visible then
-            Services.Tween:Create(btn, TweenInfo.new(0.12), {
+            Services.Tween:Create(btn, TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
                 BackgroundTransparency = 0.92,
-                BackgroundColor3 = C_WHITE,
+                BackgroundColor3 = C_CONTAINER_HOVER,
                 TextColor3 = C_WHITE
             }):Play()
         end
@@ -2041,7 +2077,7 @@ function Builder:Tab(name, description)
 
     btn.MouseLeave:Connect(function()
         if not page.Visible then
-            Services.Tween:Create(btn, TweenInfo.new(0.12), {
+            Services.Tween:Create(btn, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
                 BackgroundTransparency = 1,
                 TextColor3 = C_MUTED
             }):Play()
@@ -2049,26 +2085,25 @@ function Builder:Tab(name, description)
     end)
 
     btn.MouseButton1Click:Connect(Switch)
-    table.insert(TabList, {Btn = btn, Page = page})
+    table.insert(TabList, {Btn = btn, Page = page, Notch = btnNotch, Index = tabIndex})
     if #TabList == 1 then Switch() end
-
     local Widgets = {}
 
-    -- FULL-ROW TAP-TO-TOGGLE COMPONENT (Tapping anywhere on button/card switches state)
+    -- FULL-ROW TAP-TO-TOGGLE COMPONENT (Red + Black Ultra Smooth Dynamic Toggle)
     function Widgets:Toggle(title, defaultVal, callback, accentColor)
-        local activeColor = accentColor or C_PINK
+        local activeColor = accentColor or C_RED
 
         local box = Instance.new("Frame", page)
         box.Size = UDim2.new(1, -6, 0, 44)
-        box.BackgroundColor3 = C_CONTAINER
+        box.BackgroundColor3 = defaultVal and C_CONTAINER_ACT or C_CONTAINER
         box.BorderSizePixel = 0
         Instance.new("UICorner", box).CornerRadius = UDim.new(0, 7)
 
-        -- Left Active Indicator Pill
+        -- Left Active Indicator Pill with dynamic height
         local activeBar = Instance.new("Frame", box)
-        activeBar.Size = UDim2.new(0, 3, 0, 22)
-        activeBar.Position = UDim2.new(0, 0, 0.5, -11)
-        activeBar.BackgroundColor3 = defaultVal and activeColor or C_BORDER
+        activeBar.Size = defaultVal and UDim2.new(0, 3, 0, 24) or UDim2.new(0, 3, 0, 16)
+        activeBar.Position = defaultVal and UDim2.new(0, 0, 0.5, -12) or UDim2.new(0, 0, 0.5, -8)
+        activeBar.BackgroundColor3 = defaultVal and activeColor or C_BORDER_DIM
         activeBar.BorderSizePixel = 0
         Instance.new("UICorner", activeBar).CornerRadius = UDim.new(1, 0)
 
@@ -2083,11 +2118,11 @@ function Builder:Tab(name, description)
         label.TextXAlignment = Enum.TextXAlignment.Left
 
         local statusLabel = Instance.new("TextLabel", box)
-        statusLabel.Text = defaultVal and "ACTIVE" or "OFF"
+        statusLabel.Text = defaultVal and "ACTIVE" or "DISABLED"
         statusLabel.Size = UDim2.new(1, -90, 0, 14)
         statusLabel.Position = UDim2.new(0, 16, 0, 24)
         statusLabel.BackgroundTransparency = 1
-        statusLabel.TextColor3 = defaultVal and (accentColor or C_CYAN) or C_MUTED
+        statusLabel.TextColor3 = defaultVal and (accentColor or C_RED_GLOW) or C_MUTED
         statusLabel.Font = Enum.Font.GothamBold
         statusLabel.TextSize = 8
         statusLabel.TextXAlignment = Enum.TextXAlignment.Left
@@ -2095,7 +2130,7 @@ function Builder:Tab(name, description)
         local switch = Instance.new("Frame", box)
         switch.Size = UDim2.new(0, 42, 0, 22)
         switch.Position = UDim2.new(1, -54, 0.5, -11)
-        switch.BackgroundColor3 = defaultVal and activeColor or Color3.fromRGB(36, 28, 50)
+        switch.BackgroundColor3 = defaultVal and activeColor or Color3.fromRGB(32, 18, 24)
         switch.BorderSizePixel = 0
         Instance.new("UICorner", switch).CornerRadius = UDim.new(1, 0)
 
@@ -2109,20 +2144,28 @@ function Builder:Tab(name, description)
         local state = defaultVal
         local function SetState(val)
             state = val
-            local col = state and activeColor or Color3.fromRGB(36, 28, 50)
+            local col = state and activeColor or Color3.fromRGB(32, 18, 24)
             local pos = state and UDim2.new(1, -19, 0.5, -8) or UDim2.new(0, 3, 0.5, -8)
-            local barCol = state and activeColor or C_BORDER
+            local barCol = state and activeColor or C_BORDER_DIM
+            local barSize = state and UDim2.new(0, 3, 0, 24) or UDim2.new(0, 3, 0, 16)
+            local barPos = state and UDim2.new(0, 0, 0.5, -12) or UDim2.new(0, 0, 0.5, -8)
+            local boxCol = state and C_CONTAINER_ACT or C_CONTAINER
             
-            statusLabel.Text = state and "ACTIVE" or "OFF"
-            statusLabel.TextColor3 = state and (accentColor or C_CYAN) or C_MUTED
+            statusLabel.Text = state and "ACTIVE" or "DISABLED"
+            statusLabel.TextColor3 = state and (accentColor or C_RED_GLOW) or C_MUTED
 
-            Services.Tween:Create(switch, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {BackgroundColor3 = col}):Play()
-            Services.Tween:Create(dot, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Position = pos}):Play()
-            Services.Tween:Create(activeBar, TweenInfo.new(0.18), {BackgroundColor3 = barCol}):Play()
+            Services.Tween:Create(switch, TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {BackgroundColor3 = col}):Play()
+            Services.Tween:Create(dot, TweenInfo.new(0.24, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Position = pos}):Play()
+            Services.Tween:Create(activeBar, TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+                BackgroundColor3 = barCol,
+                Size = barSize,
+                Position = barPos
+            }):Play()
+            Services.Tween:Create(box, TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {BackgroundColor3 = boxCol}):Play()
             callback(state)
         end
 
-        -- Invisible full-card tap button: allows effortless tap-to-toggle anywhere on the card
+        -- Invisible full-card tap button with tactile feedback
         local tapOverlay = Instance.new("TextButton", box)
         tapOverlay.Name = "TapHitbox"
         tapOverlay.Size = UDim2.new(1, 0, 1, 0)
@@ -2131,14 +2174,20 @@ function Builder:Tab(name, description)
         tapOverlay.ZIndex = 5
 
         tapOverlay.MouseButton1Click:Connect(function()
+            Services.Tween:Create(box, TweenInfo.new(0.06), {Size = UDim2.new(1, -10, 0, 42)}):Play()
+            task.wait(0.06)
+            Services.Tween:Create(box, TweenInfo.new(0.1, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Size = UDim2.new(1, -6, 0, 44)}):Play()
             SetState(not state)
         end)
 
         tapOverlay.MouseEnter:Connect(function()
-            Services.Tween:Create(box, TweenInfo.new(0.15), {BackgroundColor3 = C_CONTAINER_HOVER}):Play()
+            if not state then
+                Services.Tween:Create(box, TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {BackgroundColor3 = C_CONTAINER_HOVER}):Play()
+            end
         end)
         tapOverlay.MouseLeave:Connect(function()
-            Services.Tween:Create(box, TweenInfo.new(0.15), {BackgroundColor3 = C_CONTAINER}):Play()
+            local target = state and C_CONTAINER_ACT or C_CONTAINER
+            Services.Tween:Create(box, TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {BackgroundColor3 = target}):Play()
         end)
 
         return SetState
@@ -2162,11 +2211,11 @@ function Builder:Tab(name, description)
         label.TextSize = 11
         label.TextXAlignment = Enum.TextXAlignment.Left
 
-        -- Sleek Value Badge Box
+        -- Sleek Value Badge Box in Deep Obsidian
         local badge = Instance.new("Frame", box)
         badge.Size = UDim2.new(0, 68, 0, 18)
         badge.Position = UDim2.new(1, -80, 0, 8)
-        badge.BackgroundColor3 = C_ONYX
+        badge.BackgroundColor3 = C_BLACK
         badge.BorderSizePixel = 0
         Instance.new("UICorner", badge).CornerRadius = UDim.new(0, 4)
 
@@ -2174,7 +2223,7 @@ function Builder:Tab(name, description)
         num.Text = tostring(defaultVal) .. (suffix or "")
         num.Size = UDim2.new(1, 0, 1, 0)
         num.BackgroundTransparency = 1
-        num.TextColor3 = C_CYAN
+        num.TextColor3 = C_RED_GLOW
         num.Font = Enum.Font.GothamBold
         num.TextSize = 10
         num.TextXAlignment = Enum.TextXAlignment.Center
@@ -2182,21 +2231,21 @@ function Builder:Tab(name, description)
         local track = Instance.new("Frame", box)
         track.Size = UDim2.new(1, -32, 0, 5)
         track.Position = UDim2.new(0, 16, 0, 38)
-        track.BackgroundColor3 = Color3.fromRGB(16, 12, 26)
+        track.BackgroundColor3 = Color3.fromRGB(16, 12, 18)
         track.BorderSizePixel = 0
         Instance.new("UICorner", track).CornerRadius = UDim.new(1, 0)
 
         local fill = Instance.new("Frame", track)
         local initScale = math.clamp((defaultVal - min) / (max - min), 0, 1)
         fill.Size = UDim2.new(initScale, 0, 1, 0)
-        fill.BackgroundColor3 = C_PINK
+        fill.BackgroundColor3 = C_RED
         fill.BorderSizePixel = 0
         Instance.new("UICorner", fill).CornerRadius = UDim.new(1, 0)
 
         local fillGrad = Instance.new("UIGradient", fill)
         fillGrad.Color = ColorSequence.new({
-            ColorSequenceKeypoint.new(0, C_PINK),
-            ColorSequenceKeypoint.new(1, C_CYAN)
+            ColorSequenceKeypoint.new(0, C_RED_DARK),
+            ColorSequenceKeypoint.new(1, C_RED)
         })
 
         local knob = Instance.new("Frame", track)
@@ -2206,13 +2255,20 @@ function Builder:Tab(name, description)
         knob.BorderSizePixel = 0
         Instance.new("UICorner", knob).CornerRadius = UDim.new(1, 0)
 
+        local knobCenter = Instance.new("Frame", knob)
+        knobCenter.Size = UDim2.new(0, 5, 0, 5)
+        knobCenter.Position = UDim2.new(0.5, -2, 0.5, -2)
+        knobCenter.BackgroundColor3 = C_RED
+        knobCenter.BorderSizePixel = 0
+        Instance.new("UICorner", knobCenter).CornerRadius = UDim.new(1, 0)
+
         local active = false
         local function Apply(input)
             local p = math.clamp((input.Position.X - track.AbsolutePosition.X) / track.AbsoluteSize.X, 0, 1)
             local raw = min + (max - min) * p
             local val = isFloat and (math.floor(raw * 2) / 2) or math.floor(raw)
-            fill.Size = UDim2.new(p, 0, 1, 0)
-            knob.Position = UDim2.new(p, -6, 0.5, -6)
+            Services.Tween:Create(fill, TweenInfo.new(0.06), {Size = UDim2.new(p, 0, 1, 0)}):Play()
+            Services.Tween:Create(knob, TweenInfo.new(0.06), {Position = UDim2.new(p, -6, 0.5, -6)}):Play()
             num.Text = tostring(val) .. (suffix or "")
             callback(val)
         end
@@ -2281,36 +2337,43 @@ function Builder:Tab(name, description)
         return function(txt) data.Text = txt end
     end
 
-    -- Luxury Action Button Component
+    -- Luxury Action Button Component (Red + Black Theme with Left Ruby Accent)
     function Widgets:Button(title, isDestructive, callback)
         local b = Instance.new("TextButton", page)
         b.Size = UDim2.new(1, -6, 0, 36)
-        b.BackgroundColor3 = isDestructive and Color3.fromRGB(36, 18, 28) or C_CONTAINER
+        b.BackgroundColor3 = isDestructive and Color3.fromRGB(38, 14, 20) or C_CONTAINER
         b.Text = title
-        b.TextColor3 = isDestructive and Color3.fromRGB(255, 60, 80) or C_WHITE
+        b.TextColor3 = isDestructive and Color3.fromRGB(255, 65, 80) or C_WHITE
         b.Font = Enum.Font.GothamBold
         b.TextSize = 11
         b.BorderSizePixel = 0
         Instance.new("UICorner", b).CornerRadius = UDim.new(0, 7)
 
+        local bar = Instance.new("Frame", b)
+        bar.Size = UDim2.new(0, 3, 0.6, 0)
+        bar.Position = UDim2.new(0, 0, 0.2, 0)
+        bar.BackgroundColor3 = isDestructive and Color3.fromRGB(255, 50, 70) or C_RED_DARK
+        bar.BorderSizePixel = 0
+        Instance.new("UICorner", bar).CornerRadius = UDim.new(1, 0)
+
         b.MouseEnter:Connect(function()
-            Services.Tween:Create(b, TweenInfo.new(0.15), {
-                BackgroundColor3 = isDestructive and Color3.fromRGB(54, 22, 38) or C_CONTAINER_HOVER,
-                TextColor3 = isDestructive and Color3.fromRGB(255, 90, 110) or C_PINK
+            Services.Tween:Create(b, TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+                BackgroundColor3 = isDestructive and Color3.fromRGB(60, 18, 28) or C_CONTAINER_HOVER,
+                TextColor3 = isDestructive and Color3.fromRGB(255, 100, 115) or C_RED_GLOW
             }):Play()
         end)
 
         b.MouseLeave:Connect(function()
-            Services.Tween:Create(b, TweenInfo.new(0.15), {
-                BackgroundColor3 = isDestructive and Color3.fromRGB(36, 18, 28) or C_CONTAINER,
-                TextColor3 = isDestructive and Color3.fromRGB(255, 60, 80) or C_WHITE
+            Services.Tween:Create(b, TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+                BackgroundColor3 = isDestructive and Color3.fromRGB(38, 14, 20) or C_CONTAINER,
+                TextColor3 = isDestructive and Color3.fromRGB(255, 65, 80) or C_WHITE
             }):Play()
         end)
 
         b.MouseButton1Click:Connect(function()
-            Services.Tween:Create(b, TweenInfo.new(0.08), {Size = UDim2.new(1, -12, 0, 34)}):Play()
+            Services.Tween:Create(b, TweenInfo.new(0.08, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Size = UDim2.new(1, -12, 0, 34)}):Play()
             task.wait(0.08)
-            Services.Tween:Create(b, TweenInfo.new(0.08), {Size = UDim2.new(1, -6, 0, 36)}):Play()
+            Services.Tween:Create(b, TweenInfo.new(0.1, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Size = UDim2.new(1, -6, 0, 36)}):Play()
             callback()
         end)
     end
