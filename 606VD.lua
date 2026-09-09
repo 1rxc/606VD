@@ -43,11 +43,11 @@ local Config = {
     },
     Automation = {
         AutoGreatCheck = true,
-        SmartGreat = true, -- Smart Great Fix Gen (Zero adjustment needed)
+        SmartGreat = true, -- Smart Great Fix Gen (Zero adjustment needed, instant perfect Great tap)
         AutoRepair = true,
-        HitAngleStart = 106, 
-        HitAngleEnd = 119,
-        ClickDelay = 0.0405, -- 40.5 MS Pre-Calibrated Sweet Spot
+        HitAngleStart = 105, 
+        HitAngleEnd = 113,
+        ClickDelay = 0, -- Instant Synchronous Tap (Zero Latency)
         TouchID = 8822,
         ActionPath = "Survivor-mob.Controls.action.check"
     },
@@ -1335,35 +1335,53 @@ local function GetActionTarget()
     return current
 end
 
+-- Instantaneous Zero-Latency Great Tap Actuator (PC + Mobile)
 local function TriggerGreatAction()
-    task.spawn(function()
-        pcall(function()
-            local b = GetActionTarget()
-            if b and b:IsA("GuiObject") then
-                local p, s, i = b.AbsolutePosition, b.AbsoluteSize, Services.Gui:GetGuiInset()
-                local cx, cy = p.X + (s.X / 2) + i.X, p.Y + (s.Y / 2) + i.Y
-                Services.VIM:SendTouchEvent(Config.Automation.TouchID, 0, cx, cy)
-                task.wait(0.01)
-                Services.VIM:SendTouchEvent(Config.Automation.TouchID, 2, cx, cy)
-            end
-        end)
+    -- 1. Spacebar Key Down synchronously via VirtualInputManager
+    pcall(function()
+        Services.VIM:SendKeyEvent(true, Enum.KeyCode.Space, false, game)
     end)
 
-    task.spawn(function()
-        pcall(function()
-            local b = GetActionTarget()
-            if b and firesignal then
-                firesignal(b.Activated)
-                firesignal(b.MouseButton1Down)
-                firesignal(b.MouseButton1Click)
-            end
-        end)
+    -- 2. Virtual Touch Event for Mobile
+    pcall(function()
+        local b = GetActionTarget()
+        if b and b:IsA("GuiObject") then
+            local p, s, i = b.AbsolutePosition, b.AbsoluteSize, Services.Gui:GetGuiInset()
+            local cx, cy = p.X + (s.X / 2) + i.X, p.Y + (s.Y / 2) + i.Y
+            Services.VIM:SendTouchEvent(Config.Automation.TouchID, 0, cx, cy)
+            Services.VIM:SendTouchEvent(Config.Automation.TouchID, 2, cx, cy)
+        end
     end)
 
+    -- 3. Firesignal for Touch/Click GUI buttons
+    pcall(function()
+        local b = GetActionTarget()
+        if b and firesignal then
+            firesignal(b.Activated)
+            firesignal(b.MouseButton1Click)
+        end
+    end)
+
+    -- 4. Mobile action check button scan
+    pcall(function()
+        local pg = LocalPlayer:FindFirstChild("PlayerGui")
+        if pg then
+            local mob = pg:FindFirstChild("Survivor-mob")
+            if mob then
+                local action = mob:FindFirstChild("Controls") and mob.Controls:FindFirstChild("action")
+                local chk = action and action:FindFirstChild("check")
+                if chk and firesignal then
+                    firesignal(chk.Activated)
+                    firesignal(chk.MouseButton1Click)
+                end
+            end
+        end
+    end)
+
+    -- 5. Release Space key safely after micro-hold
     task.spawn(function()
+        task.wait(0.02)
         pcall(function()
-            Services.VIM:SendKeyEvent(true, Enum.KeyCode.Space, false, game)
-            task.wait(0.01)
             Services.VIM:SendKeyEvent(false, Enum.KeyCode.Space, false, game)
         end)
     end)
@@ -1399,41 +1417,51 @@ local function BindSkillCheckGui(prompt)
         if check.Visible then
             if State.SkillLoop then State.SkillLoop:Disconnect(); State.SkillLoop = nil end
             State.LastNeedleRot = line.Rotation % 360
+            State.SkillTriggered = false
 
             State.SkillLoop = Services.Run.RenderStepped:Connect(function()
                 if not check.Visible or not check.Parent then
                     if State.SkillLoop then State.SkillLoop:Disconnect(); State.SkillLoop = nil end
                     State.LastNeedleRot = nil
+                    State.SkillTriggered = false
                     return
                 end
 
-                -- Determine active angle window & delay compensation
-                local angleStart = Config.Automation.HitAngleStart
-                local angleEnd = Config.Automation.HitAngleEnd
-                local delayTime = Config.Automation.ClickDelay
-
-                -- SMART GREAT FIX GEN: Self-calibrated sweet spot (106 DEG to 119 DEG with 40.5ms delay)
-                if Config.Automation.SmartGreat then
-                    angleStart = 106
-                    angleEnd = 119
-                    delayTime = 0.0405
-                end
+                if State.SkillTriggered then return end
 
                 local lr = line.Rotation % 360
                 local gr = goal.Rotation % 360
-                local ss = (gr + angleStart) % 360
-                local se = (gr + angleEnd) % 360
+                local hitTarget = false
 
-                if IsInTargetArc(State.LastNeedleRot, lr, ss, se) then
+                -- SMART GREAT FIX GEN (Zero adjustment needed):
+                -- Violence District Great sweet spot is (gr + 104) to (gr + 114) DEG.
+                -- We tap instantly at (gr + 105) to (gr + 113) DEG with 0ms delay.
+                if Config.Automation.SmartGreat then
+                    local gs = (gr + 105) % 360
+                    local ge = (gr + 113) % 360
+                    if IsInTargetArc(State.LastNeedleRot, lr, gs, ge) then
+                        hitTarget = true
+                    end
+                else
+                    local angleStart = Config.Automation.HitAngleStart
+                    local angleEnd = Config.Automation.HitAngleEnd
+                    local ss = (gr + angleStart) % 360
+                    local se = (gr + angleEnd) % 360
+                    if IsInTargetArc(State.LastNeedleRot, lr, ss, se) then
+                        hitTarget = true
+                    end
+                end
+
+                if hitTarget then
+                    State.SkillTriggered = true
                     if State.SkillLoop then State.SkillLoop:Disconnect(); State.SkillLoop = nil end
                     State.LastNeedleRot = nil
 
-                    task.spawn(function()
-                        if delayTime > 0 then
-                            task.wait(delayTime)
-                        end
+                    if not Config.Automation.SmartGreat and Config.Automation.ClickDelay > 0 then
+                        task.delay(Config.Automation.ClickDelay, TriggerGreatAction)
+                    else
                         TriggerGreatAction()
-                    end)
+                    end
                 else
                     State.LastNeedleRot = lr
                 end
@@ -1442,6 +1470,7 @@ local function BindSkillCheckGui(prompt)
             State.SkillLoop:Disconnect()
             State.SkillLoop = nil
             State.LastNeedleRot = nil
+            State.SkillTriggered = false
         end
     end
 
@@ -1462,6 +1491,41 @@ local function InitializeSkillEngine()
                 BindSkillCheckGui(c)
             end
         end)
+    end)
+
+    -- Auto Generator Repair Proximity Assist Loop
+    task.spawn(function()
+        while true do
+            task.wait(0.25)
+            if Config.System.Active and Config.Automation.AutoRepair and LocalPlayer.Character then
+                local root = LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+                if root and State.Generators and #State.Generators > 0 then
+                    for _, gen in ipairs(State.Generators) do
+                        if gen and gen.Parent then
+                            local prog = GetGeneratorProgress(gen)
+                            if not IsGeneratorCompleted(gen, prog) then
+                                local anchor = State.AnchorCache[gen] or gen:FindFirstChildWhichIsA("BasePart", true)
+                                if anchor then
+                                    local dist = (anchor.Position - root.Position).Magnitude
+                                    if dist <= 14 then
+                                        for _, p in ipairs(gen:GetDescendants()) do
+                                            if p:IsA("ProximityPrompt") and p.Enabled then
+                                                pcall(function()
+                                                    if fireproximityprompt then
+                                                        fireproximityprompt(p, 0)
+                                                    end
+                                                end)
+                                                break
+                                            end
+                                        end
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
     end)
 end
 
@@ -1652,23 +1716,13 @@ TitleDiv.BorderSizePixel = 0
 
 local MainTitle = Instance.new("TextLabel", Header)
 MainTitle.Text = "VIOLENCE DISTRICT"
-MainTitle.Size = UDim2.new(0, 165, 0, 18)
-MainTitle.Position = UDim2.new(0, 98, 0.5, -14)
+MainTitle.Size = UDim2.new(0, 180, 0, 18)
+MainTitle.Position = UDim2.new(0, 98, 0.5, -9)
 MainTitle.BackgroundTransparency = 1
 MainTitle.TextColor3 = C_WHITE
 MainTitle.Font = Enum.Font.GothamBold
 MainTitle.TextSize = 13
 MainTitle.TextXAlignment = Enum.TextXAlignment.Left
-
-local SubTitle = Instance.new("TextLabel", Header)
-SubTitle.Text = "PREMIUM SUITE // RED & BLACK EDITION"
-SubTitle.Size = UDim2.new(0, 180, 0, 14)
-SubTitle.Position = UDim2.new(0, 98, 0.5, 3)
-SubTitle.BackgroundTransparency = 1
-SubTitle.TextColor3 = C_CYAN
-SubTitle.Font = Enum.Font.GothamMedium
-SubTitle.TextSize = 9
-SubTitle.TextXAlignment = Enum.TextXAlignment.Left
 
 -- Header: Telemetry HUD Box
 local TelemetryBox = Instance.new("Frame", Header)
@@ -2438,19 +2492,27 @@ PageKiller:Button("INSTANT RECOVER / CLEAR ALL STUNS", false, function()
     end
 end)
 
--- Automation Protocols: SMART GREAT FIX GEN (User Request: Smart great fix gen with zero need to adjust!)
-PageAuto:Toggle("Smart Great Fix Gen", Config.Automation.SmartGreat, function(v)
-    Config.Automation.SmartGreat = v
-    Config.Automation.AutoGreatCheck = true
+-- Automation Protocols: PERFECT FIX GEN (Zero adjustment needed, instant auto tap)
+PageAuto:Toggle("Auto Fix Gen (Perfect Great)", Config.Automation.AutoGreatCheck, function(v)
+    Config.Automation.AutoGreatCheck = v
 end)
-PageAuto:Toggle("Auto Generator Repair Assist", Config.Automation.AutoRepair, function(v) Config.Automation.AutoRepair = v end)
+PageAuto:Toggle("Smart Zero-Adjust Engine", Config.Automation.SmartGreat, function(v)
+    Config.Automation.SmartGreat = v
+end)
+PageAuto:Toggle("Auto Generator Repair Assist", Config.Automation.AutoRepair, function(v)
+    Config.Automation.AutoRepair = v
+end)
 
--- Manual Fine-Tuning Sliders (Active when Smart Great is turned off)
-PageAuto:Slider("Click Delay Compensation", 0, 200, 40.5, " MS", true, function(ms)
+-- Manual Fine-Tuning Sliders (Optional override when Smart Zero-Adjust is disabled)
+PageAuto:Slider("Click Delay Compensation", 0, 100, 0, " MS", true, function(ms)
     Config.Automation.ClickDelay = ms / 1000
 end)
-PageAuto:Slider("Great Hit Angle Start", 95, 115, Config.Automation.HitAngleStart, " DEG", false, function(v) Config.Automation.HitAngleStart = v end)
-PageAuto:Slider("Great Hit Angle End", 108, 128, Config.Automation.HitAngleEnd, " DEG", false, function(v) Config.Automation.HitAngleEnd = v end)
+PageAuto:Slider("Great Hit Angle Start", 95, 115, Config.Automation.HitAngleStart, " DEG", false, function(v)
+    Config.Automation.HitAngleStart = v
+end)
+PageAuto:Slider("Great Hit Angle End", 108, 128, Config.Automation.HitAngleEnd, " DEG", false, function(v)
+    Config.Automation.HitAngleEnd = v
+end)
 
 -- Visuals Protocols: TAP-TO-TOGGLE BUTTONS FOR KILLER, PLAYER, GENERATOR, AND EXIT
 local SetKillerToggle = PageESP:Toggle("ESP Killer", Config.Visuals.KillerESP, function(v)
