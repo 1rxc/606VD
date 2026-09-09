@@ -31,9 +31,9 @@ local Config = {
     },
     Combat = {
         AutoParry = true,
-        ParryDistance = 11.0, -- Precise killer melee strike reach (no spamming from afar)
-        ParryCooldown = 1.20, -- Single crisp parry per swing; prevents input spamming
-        FaceCheck = false     -- 360-degree parry protection against surprise attacks
+        ParryDistance = 13.0, -- True killer attack range with network lag buffer
+        ParryCooldown = 0.90, -- Perfectly covers the 0.8s counter stance window without spamming
+        FaceCheck = false     -- 360-degree parry protection against spins and flicks
     },
     Player = {
         AutoParry = true, -- Strict Player to Killer Parry
@@ -258,7 +258,7 @@ local function ResolveSingleKiller()
                 for _, item in ipairs(cChar:GetChildren()) do
                     if item:IsA("Tool") or item:IsA("Model") or item:IsA("MeshPart") then
                         local n = item.Name:lower()
-                        if n:find("knife") or n:find("machete") or n:find("chainsaw") or n:find("cleaver") or n:find("axe") or n:find("hammer") or n:find("bat") or n:find("weapon") or n:find("slasher") then
+                        if n:find("knife") or n:find("machete") or n:find("chainsaw") or n:find("cleaver") or n:find("axe") or n:find("hammer") or n:find("bat") or n:find("weapon") or n:find("slasher") or n:find("scythe") or n:find("claws") or n:find("blade") or n:find("pipe") or n:find("sickle") then
                             hasWeapon = true; break
                         end
                     end
@@ -271,29 +271,42 @@ local function ResolveSingleKiller()
     -- Priority 1: Definitive Killer/Slasher team
     for _, p in ipairs(Services.Players:GetPlayers()) do
         local team = p.Team and p.Team.Name:lower() or ""
-        if (team:find("killer") or team:find("slasher") or team:find("hunter") or team:find("murderer") or team:find("beast")) and not team:find("survivor") then
+        if (team:find("killer") or team:find("slasher") or team:find("hunter") or team:find("murderer") or team:find("beast") or team:find("monster")) and not (team:find("survivor") or team:find("victim")) then
             State.ActiveKiller = p
             return p
         end
     end
 
-    -- Priority 2: Definitive Killer role and character attributes
+    -- Priority 2: Definitive Killer role, attributes & Violence District archetypes
+    local killerArchetypes = {"killer", "slasher", "stalker", "hidden", "masked", "abysswalker", "veil", "cure", "hunter", "murderer", "beast", "butcher", "fiend"}
     for _, p in ipairs(Services.Players:GetPlayers()) do
-        local role = tostring(GetGameValue(p, "Role") or GetGameValue(p, "SelectedKiller") or ""):lower()
+        local role = tostring(GetGameValue(p, "Role") or GetGameValue(p, "SelectedKiller") or GetGameValue(p, "Killer") or ""):lower()
         local isKAttr = GetGameValue(p, "IsKiller")
         local maskAttr = GetGameValue(p, "Mask")
-        if role:find("killer") or role:find("slasher") or isKAttr == true or maskAttr ~= nil then
+        for _, arch in ipairs(killerArchetypes) do
+            if role:find(arch) then
+                State.ActiveKiller = p
+                return p
+            end
+        end
+        if isKAttr == true or maskAttr ~= nil then
             State.ActiveKiller = p
             return p
         end
 
         local char = p.Character
         if char then
-            local charRole = tostring(GetGameValue(char, "Role") or GetGameValue(char, "SelectedKiller") or ""):lower()
+            local charRole = tostring(GetGameValue(char, "Role") or GetGameValue(char, "SelectedKiller") or char.Name):lower()
             local charIsK = GetGameValue(char, "IsKiller")
             local charMask = GetGameValue(char, "Mask") or char:FindFirstChild("Mask")
             local isCarrying = char:FindFirstChild("Carrying") or GetGameValue(char, "IsCarrying")
-            if charRole:find("killer") or charRole:find("slasher") or charIsK == true or charMask ~= nil or isCarrying then
+            for _, arch in ipairs(killerArchetypes) do
+                if charRole:find(arch) then
+                    State.ActiveKiller = p
+                    return p
+                end
+            end
+            if charIsK == true or charMask ~= nil or isCarrying then
                 State.ActiveKiller = p
                 return p
             end
@@ -312,7 +325,8 @@ local function ResolveSingleKiller()
                         local tName = item.Name:lower()
                         if tName:find("knife") or tName:find("machete") or tName:find("chainsaw") or tName:find("cleaver") 
                             or tName:find("slasher") or tName:find("murderer") or tName:find("axe") or tName:find("hammer")
-                            or tName:find("bat") or tName:find("killerweapon") or tName:find("scythe") or tName:find("claws") then
+                            or tName:find("bat") or tName:find("killerweapon") or tName:find("scythe") or tName:find("claws")
+                            or tName:find("blade") or tName:find("sword") or tName:find("sickle") or tName:find("pipe") or tName:find("fists") then
                             State.ActiveKiller = p
                             return p
                         end
@@ -347,7 +361,10 @@ local function IsLocalPlayerKiller()
     end
 
     local role = tostring(GetGameValue(LocalPlayer, "Role") or GetGameValue(LocalPlayer, "SelectedKiller") or ""):lower()
-    if role:find("killer") or role:find("slasher") or role:find("stalker") or role:find("hidden") or role:find("abysswalker") or role:find("veil") or role:find("cure") then return true end
+    local killerArchetypes = {"killer", "slasher", "stalker", "hidden", "masked", "abysswalker", "veil", "cure", "hunter", "murderer", "beast", "butcher", "fiend"}
+    for _, arch in ipairs(killerArchetypes) do
+        if role:find(arch) then return true end
+    end
     if GetGameValue(LocalPlayer, "IsKiller") == true then return true end
 
     local char = LocalPlayer.Character
@@ -358,7 +375,7 @@ local function IsLocalPlayerKiller()
         for _, item in ipairs(char:GetChildren()) do
             if item:IsA("Tool") then
                 local n = item.Name:lower()
-                if n:find("knife") or n:find("machete") or n:find("chainsaw") or n:find("cleaver") or n:find("axe") or n:find("hammer") or n:find("slasher") or n:find("scythe") or n:find("claws") or n:find("weapon") then
+                if n:find("knife") or n:find("machete") or n:find("chainsaw") or n:find("cleaver") or n:find("axe") or n:find("hammer") or n:find("slasher") or n:find("scythe") or n:find("claws") or n:find("weapon") or n:find("blade") then
                     return true
                 end
             end
@@ -368,7 +385,7 @@ local function IsLocalPlayerKiller()
     return false
 end
 
--- STRICT SINGLE KILLER VERIFICATION: Checks if a given player is definitively the Killer
+-- STRICT SINGLE KILLER VERIFICATION: Identifies if an opponent is the hostile Killer
 local function IsTargetKiller(p)
     if not p or p == LocalPlayer then return false end
     if State.ActiveKiller and p == State.ActiveKiller then return true end
@@ -377,20 +394,22 @@ local function IsTargetKiller(p)
     if k and p == k then return true end
 
     local team = p.Team and p.Team.Name:lower() or ""
-    if (team:find("killer") or team:find("slasher") or team:find("hunter") or team:find("murderer") or team:find("beast") or team:find("stalker") or team:find("hidden") or team:find("abysswalker") or team:find("veil") or team:find("cure")) and not (team:find("survivor") or team:find("victim")) then
+    if (team:find("killer") or team:find("slasher") or team:find("hunter") or team:find("murderer") or team:find("beast") or team:find("stalker") or team:find("hidden") or team:find("abysswalker") or team:find("veil") or team:find("cure") or team:find("monster")) and not (team:find("survivor") or team:find("victim")) then
         return true
     end
 
-    local role = tostring(GetGameValue(p, "Role") or GetGameValue(p, "SelectedKiller") or ""):lower()
-    if role:find("killer") or role:find("slasher") or role:find("stalker") or role:find("hidden") or role:find("abysswalker") or role:find("veil") or role:find("cure") or role:find("hunter") then
-        return true
+    local role = tostring(GetGameValue(p, "Role") or GetGameValue(p, "SelectedKiller") or GetGameValue(p, "Killer") or ""):lower()
+    local killerArchetypes = {"killer", "slasher", "stalker", "hidden", "masked", "abysswalker", "veil", "cure", "hunter", "murderer", "beast", "butcher", "fiend"}
+    for _, arch in ipairs(killerArchetypes) do
+        if role:find(arch) then return true end
     end
+    if GetGameValue(p, "IsKiller") == true then return true end
 
     local char = p.Character
     if char then
-        local charRole = tostring(GetGameValue(char, "Role") or GetGameValue(char, "SelectedKiller") or ""):lower()
-        if charRole:find("killer") or charRole:find("slasher") or charRole:find("stalker") or charRole:find("hidden") or charRole:find("abysswalker") or charRole:find("veil") or charRole:find("cure") or charRole:find("hunter") then
-            return true
+        local charRole = tostring(GetGameValue(char, "Role") or GetGameValue(char, "SelectedKiller") or char.Name):lower()
+        for _, arch in ipairs(killerArchetypes) do
+            if charRole:find(arch) then return true end
         end
         if GetGameValue(char, "IsKiller") == true or GetGameValue(char, "Mask") ~= nil or char:FindFirstChild("Carrying") then
             return true
@@ -398,10 +417,18 @@ local function IsTargetKiller(p)
         for _, item in ipairs(char:GetChildren()) do
             if item:IsA("Tool") or item:IsA("Model") or item:IsA("MeshPart") then
                 local n = item.Name:lower()
-                if n:find("knife") or n:find("machete") or n:find("chainsaw") or n:find("cleaver") or n:find("axe") or n:find("hammer") or n:find("slasher") or n:find("scythe") or n:find("claws") or n:find("killerweapon") then
+                if n:find("knife") or n:find("machete") or n:find("chainsaw") or n:find("cleaver") or n:find("axe") or n:find("hammer") or n:find("slasher") or n:find("scythe") or n:find("claws") or n:find("killerweapon") or n:find("blade") or n:find("sword") or n:find("sickle") or n:find("pipe") then
                     return true
                 end
             end
+        end
+    end
+
+    -- Fallback: If no active killer has been resolved yet, any non-survivor player could be the killer
+    if not State.ActiveKiller and not team:find("survivor") and not team:find("victim") then
+        local pRole = tostring(GetGameValue(p, "Role") or ""):lower()
+        if not pRole:find("survivor") and not pRole:find("victim") then
+            return true
         end
     end
 
@@ -827,7 +854,7 @@ local IgnoreKeywords = {
     "walk", "run", "idle", "sprint", "fall", "jump", "land", "crouch",
     "vault", "climb", "emote", "dance", "sit", "breathe", "turn", "inspect",
     "repair", "heal", "door", "pickup", "drop", "generator", "interact",
-    "carried", "carry", "hook", "unhook", "wiggle", "struggle"
+    "carried", "carry", "hook", "unhook", "wiggle", "struggle", "fix"
 }
 
 local function GetCharacterAnimator(char)
@@ -850,9 +877,15 @@ local function GetCharacterAnimator(char)
     return a
 end
 
--- Strictly validates genuine attack animations (prevents false triggers on normal actions)
+-- Comprehensive attack detector: Identifies both named and unnamed Roblox Action strikes
 local function IsAttackAnimation(track)
     if not track then return false end
+
+    -- 1. Looped animations are never attacks (walk, run, sprint, idle, and gen repair are always looped)
+    if track.Looped == true then
+        return false
+    end
+
     local tName = (track.Name or ""):lower()
     local animId = ""
     if track.Animation then
@@ -861,16 +894,32 @@ local function IsAttackAnimation(track)
         tName = tName .. " " .. aName
     end
 
-    -- Filter out ignore keywords first (unless explicitly tagged with attack words)
+    -- 2. Filter out non-attack actions (repair, door, heal, etc.)
     for _, ign in ipairs(IgnoreKeywords) do
         if tName:find(ign) and not (tName:find("attack") or tName:find("swing") or tName:find("slash") or tName:find("hit") or tName:find("strike") or tName:find("m1")) then
             return false
         end
     end
 
-    -- Strict match: Must contain genuine attack keyword
+    -- 3. Check explicit attack keywords
     for _, kw in ipairs(AttackKeywords) do
         if tName:find(kw) or animId:find(kw) then
+            return true
+        end
+    end
+
+    -- 4. Check Action priority & short non-looped duration (catches unnamed Studio animations)
+    local prio = track.Priority
+    local isActionPrio = (prio == Enum.AnimationPriority.Action 
+        or prio == Enum.AnimationPriority.Action2 
+        or prio == Enum.AnimationPriority.Action3 
+        or prio == Enum.AnimationPriority.Action4 
+        or tostring(prio):find("Action")
+        or (prio.Value and prio.Value >= Enum.AnimationPriority.Action.Value))
+
+    if isActionPrio then
+        local len = track.Length or 0
+        if len == 0 or (len >= 0.2 and len <= 2.5) then
             return true
         end
     end
@@ -878,13 +927,13 @@ local function IsAttackAnimation(track)
     return false
 end
 
--- Clean single-tap parry actuator (Zero spam, crisp 40ms tap, auto-equips dagger)
+-- Reliable Parrying Dagger actuator (Left-Click, Right-Click, Tool Activate, Keybinds, Zero spam)
 local function ExecuteAutoParry(source)
     -- STRICT SAFETY: Killer can never auto-parry themselves! Only survivors parry killers!
     if IsLocalPlayerKiller() then return false end
 
     local now = tick()
-    -- ANTI-SPAM LOCKOUT: Cooldown prevents rapid re-triggering during the same attack
+    -- ANTI-SPAM LOCKOUT: 0.9s lockout covers the 0.8s counter-stance window without spamming
     if now - State.LastParryTick < Config.Combat.ParryCooldown then return false end
     State.LastParryTick = now
 
@@ -915,6 +964,7 @@ local function ExecuteAutoParry(source)
                         daggerTool = item
                         if human then
                             pcall(function() human:EquipTool(item) end)
+                            task.wait(0.02)
                         end
                         break
                     end
@@ -932,7 +982,7 @@ local function ExecuteAutoParry(source)
 
         local mPos = Services.Input:GetMouseLocation()
 
-        -- 3. Crisp single Left Click tap (MouseButton1 - Parrying Dagger counter stance)
+        -- 3. Crisp Left Click tap (MouseButton1 - Parrying Dagger counter stance activation)
         pcall(function()
             Services.VIM:SendMouseButtonEvent(mPos.X, mPos.Y, 0, true, game, 1)
         end)
@@ -954,9 +1004,10 @@ local function ExecuteAutoParry(source)
             pcall(mouse2click)
         end
 
-        -- 5. Fallback Keypress F
+        -- 5. Fallback Keypress F and hotbar 1
         pcall(function()
             Services.VIM:SendKeyEvent(true, Enum.KeyCode.F, false, game)
+            Services.VIM:SendKeyEvent(true, Enum.KeyCode.One, false, game)
         end)
 
         -- 6. Mobile Parry / Action Button
@@ -982,8 +1033,10 @@ local function ExecuteAutoParry(source)
             end
         end)
 
-        -- Clean micro-release (40ms tap - ZERO SPAM)
-        task.wait(0.04)
+        -- Hold for 0.08s (5 frames) to guarantee game engine registers the click down
+        task.wait(0.08)
+
+        -- Clean release
         pcall(function()
             Services.VIM:SendMouseButtonEvent(mPos.X, mPos.Y, 0, false, game, 1)
         end)
@@ -998,6 +1051,7 @@ local function ExecuteAutoParry(source)
         end)
         pcall(function()
             Services.VIM:SendKeyEvent(false, Enum.KeyCode.F, false, game)
+            Services.VIM:SendKeyEvent(false, Enum.KeyCode.One, false, game)
         end)
     end)
     return true
@@ -1024,7 +1078,7 @@ local function CheckAndTriggerParry(char, player, track)
 
     if Config.Combat.FaceCheck then
         local toMe = (myRoot.Position - tRoot.Position).Unit
-        if tRoot.CFrame.LookVector:Dot(toMe) < -0.2 then return end
+        if tRoot.CFrame.LookVector:Dot(toMe) < -0.25 then return end
     end
 
     -- Track deduplication: Ensure one parry per attack swing
@@ -1623,16 +1677,38 @@ local function ProcessEntities()
             local r = c:FindFirstChild("HumanoidRootPart") or c.PrimaryPart or ResolveAnchorPart(c)
             if r and r:IsA("BasePart") then
                 local dist = (r.Position - myRoot.Position).Magnitude
+
+                -- AUTO-PREPARE PARRYING DAGGER: If killer is within 25 studs, keep Parrying Dagger ready in hand!
+                if dist <= 25 and myChar then
+                    local currentTool = myChar:FindFirstChildOfClass("Tool")
+                    if not currentTool then
+                        local bp = LocalPlayer:FindFirstChildOfClass("Backpack")
+                        if bp then
+                            for _, item in ipairs(bp:GetChildren()) do
+                                if item:IsA("Tool") then
+                                    local n = item.Name:lower()
+                                    if n:find("parry") or n:find("dagger") or n:find("counter") then
+                                        local human = myChar:FindFirstChildOfClass("Humanoid")
+                                        if human then pcall(function() human:EquipTool(item) end) end
+                                        break
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end
+
+                -- HIT DETECTION: Trigger parry when Killer attacks within strike range!
                 if dist <= Config.Combat.ParryDistance then
                     local anim = GetCharacterAnimator(c)
                     if anim then
                         local ok, tracks = pcall(function() return anim:GetPlayingAnimationTracks() end)
                         if ok and tracks then
                             for _, tr in ipairs(tracks) do
-                                if tr.IsPlaying and not State.ParriedTracks[tr] and tr.TimePosition < 0.65 and IsAttackAnimation(tr) then
+                                if tr.IsPlaying and not State.ParriedTracks[tr] and tr.TimePosition < 0.75 and IsAttackAnimation(tr) then
                                     if Config.Combat.FaceCheck then
                                         local toMe = (myRoot.Position - r.Position).Unit
-                                        if r.CFrame.LookVector:Dot(toMe) >= -0.2 then
+                                        if r.CFrame.LookVector:Dot(toMe) >= -0.25 then
                                             State.ParriedTracks[tr] = true
                                             ExecuteAutoParry("ACTIVE_LUNGE_TRACK")
                                             break
@@ -1644,6 +1720,16 @@ local function ProcessEntities()
                                     end
                                 end
                             end
+                        end
+                    end
+
+                    -- IMMEDIATE PROXIMITY SWING SAFETY: If Killer is within 7.5 studs, facing directly at survivor and closing in
+                    local toMe = (myRoot.Position - r.Position).Unit
+                    local isFacingMe = r.CFrame.LookVector:Dot(toMe) > 0.4
+                    if dist <= 7.5 and isFacingMe and not IsLocalPlayerKiller() then
+                        local human = c:FindFirstChildOfClass("Humanoid")
+                        if human and human.MoveDirection.Magnitude > 0 then
+                            ExecuteAutoParry("PROXIMITY_STRIKE_DEFENSE")
                         end
                     end
                 end
