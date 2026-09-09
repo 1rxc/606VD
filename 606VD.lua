@@ -35,6 +35,13 @@ local Config = {
         ParryCooldown = 0.85,
         FaceCheck = false -- Disabled by default for 360-degree parry protection against spins and flicks
     },
+    Player = {
+        AutoParry = true, -- Strict Player to Killer Parry
+        AntiStun = true,  -- No Stun for Player/Survivor
+        FastSpeed = false, -- Player Speed Boost
+        SpeedValue = 22,   -- Normal player speed is 16
+        OnlyWhenPlayer = true -- Only applies when playing as player/survivor
+    },
     Killer = {
         AntiStun = true,
         FastSpeed = true,
@@ -127,6 +134,7 @@ local State = {
     BoundAnimators = {},
     ParryConnections = {},
     KillerConnections = {},
+    PlayerConnections = {},
     SkillLoop = nil,
     LastNeedleRot = nil,
     LastParryTick = 0,
@@ -1111,6 +1119,11 @@ local function BindLocalCharacterKillerMods(char)
     end
     table.clear(State.KillerConnections)
 
+    for _, c in pairs(State.PlayerConnections) do
+        if c and c.Disconnect then pcall(function() c:Disconnect() end) end
+    end
+    table.clear(State.PlayerConnections)
+
     local human = char:WaitForChild("Humanoid", 3)
     if human then
         local stConn = human.StateChanged:Connect(function(_, newState)
@@ -1144,7 +1157,167 @@ local function BindLocalCharacterKillerMods(char)
     end
 end
 
-local CardRealKiller, CardKillerStatus, CardMask, CardGensLeft, CardKillerRole
+
+--------------------------------------------------------------------------------
+-- PLAYER / SURVIVOR PROTOCOLS ENGINE (AUTO PARRY, SPEED & NO STUN)
+--------------------------------------------------------------------------------
+
+local function ShouldApplyPlayerMods()
+    if not Config.Player.OnlyWhenPlayer then
+        return true
+    end
+    return not IsLocalPlayerKiller()
+end
+
+local function CleanPlayerStunEffects(char)
+    if not char then return end
+
+    -- 1. Reset Humanoid State and PlatformStand
+    local human = char:FindFirstChildOfClass("Humanoid")
+    if human and human.Health > 0 then
+        if human.PlatformStand then
+            human.PlatformStand = false
+            human:ChangeState(Enum.HumanoidStateType.GettingUp)
+        end
+        local state = human:GetState()
+        if state == Enum.HumanoidStateType.Ragdoll 
+            or state == Enum.HumanoidStateType.Physics 
+            or state == Enum.HumanoidStateType.FallingDown 
+            or state == Enum.HumanoidStateType.PlatformStanding then
+            human:ChangeState(Enum.HumanoidStateType.GettingUp)
+            human:ChangeState(Enum.HumanoidStateType.Running)
+        end
+    end
+
+    -- 2. Clean Stun Attributes
+    for _, attr in ipairs(StunAttrNames) do
+        if char:GetAttribute(attr) == true then
+            pcall(function() char:SetAttribute(attr, false) end)
+        end
+    end
+
+    -- 3. Clean Stun/Ragdoll Value Objects and Constraints
+    for _, child in ipairs(char:GetChildren()) do
+        if child:IsA("ValueBase") then
+            local cName = child.Name:lower()
+            for _, kw in ipairs(StunAttrNames) do
+                if cName:find(kw) then
+                    if child:IsA("BoolValue") and child.Value == true then
+                        pcall(function() child.Value = false end)
+                    elseif child:IsA("NumberValue") and child.Value > 0 then
+                        pcall(function() child.Value = 0 end)
+                    end
+                end
+            end
+        elseif child.Name == "RagdollConstraints" or child.Name:find("Stun") then
+            pcall(function() child:Destroy() end)
+        end
+    end
+
+    -- 4. Screen Blind / Flashlight GUI cleanup
+    local pg = LocalPlayer:FindFirstChildOfClass("PlayerGui")
+    if pg then
+        for _, gui in ipairs(pg:GetChildren()) do
+            if gui:IsA("ScreenGui") then
+                local gName = gui.Name:lower()
+                if gName:find("blind") or gName:find("flashlight") or gName:find("stun") then
+                    gui.Enabled = false
+                end
+            end
+        end
+    end
+
+    -- 5. Stop playing stun animations on Player
+    local anim = GetCharacterAnimator(char)
+    if anim then
+        local ok, tracks = pcall(function() return anim:GetPlayingAnimationTracks() end)
+        if ok and tracks then
+            for _, t in ipairs(tracks) do
+                local tName = (t.Name or ""):lower()
+                local animId = ""
+                if t.Animation then
+                    animId = tostring(t.Animation.AnimationId or ""):lower()
+                    tName = tName .. " " .. (t.Animation.Name or ""):lower()
+                end
+                if not (tName:find("walk") or tName:find("run") or tName:find("idle") or tName:find("jump") or tName:find("fall")) then
+                    for _, kw in ipairs(StunKeywords) do
+                        if tName:find(kw) or animId:find(kw) then
+                            pcall(function() t:Stop(0) end)
+                            break
+                        end
+                    end
+                end
+            end
+        end
+    end
+end
+
+local function ProcessPlayerProtocols()
+    if not ShouldApplyPlayerMods() then return end
+
+    local char = LocalPlayer.Character
+    if not char then return end
+    local human = char:FindFirstChildOfClass("Humanoid")
+    local root = char:FindFirstChild("HumanoidRootPart")
+    if not human or human.Health <= 0 or not root then return end
+
+    -- 1. Player No Stun / Anti Stun Protocol
+    if Config.Player.AntiStun then
+        if human.PlatformStand 
+            or human:GetState() == Enum.HumanoidStateType.Ragdoll 
+            or human:GetState() == Enum.HumanoidStateType.Physics 
+            or human:GetState() == Enum.HumanoidStateType.PlatformStanding
+            or char:GetAttribute("Stunned") == true
+            or char:GetAttribute("IsStunned") == true then
+            CleanPlayerStunEffects(char)
+        end
+    end
+
+    -- 2. Player Fast Speed Protocol
+    if Config.Player.FastSpeed then
+        if human.WalkSpeed ~= Config.Player.SpeedValue then
+            human.WalkSpeed = Config.Player.SpeedValue
+        end
+        if human.MoveDirection.Magnitude > 0 then
+            local targetVel = human.MoveDirection * Config.Player.SpeedValue
+            root.AssemblyLinearVelocity = Vector3.new(targetVel.X, root.AssemblyLinearVelocity.Y, targetVel.Z)
+        end
+    end
+end
+
+local function BindLocalCharacterPlayerMods(char)
+    if not char then return end
+    for _, c in pairs(State.PlayerConnections) do
+        if c and c.Disconnect then pcall(function() c:Disconnect() end) end
+    end
+    table.clear(State.PlayerConnections)
+
+    local human = char:WaitForChild("Humanoid", 3)
+    if human then
+        local stConn = human.StateChanged:Connect(function(_, newState)
+            if Config.Player.AntiStun and ShouldApplyPlayerMods() then
+                if newState == Enum.HumanoidStateType.Ragdoll 
+                    or newState == Enum.HumanoidStateType.Physics 
+                    or newState == Enum.HumanoidStateType.FallingDown 
+                    or newState == Enum.HumanoidStateType.PlatformStanding then
+                    human:ChangeState(Enum.HumanoidStateType.GettingUp)
+                end
+            end
+        end)
+        table.insert(State.PlayerConnections, stConn)
+
+        local wsConn = human:GetPropertyChangedSignal("WalkSpeed"):Connect(function()
+            if Config.Player.FastSpeed and ShouldApplyPlayerMods() then
+                if human.WalkSpeed ~= Config.Player.SpeedValue then
+                    human.WalkSpeed = Config.Player.SpeedValue
+                end
+            end
+        end)
+        table.insert(State.PlayerConnections, wsConn)
+    end
+end
+
+local CardRealKiller, CardKillerStatus, CardMask, CardGensLeft, CardKillerRole, CardPlayerRole
 local ThreatRadarHUD, ThreatTitle, ThreatBarFill, ThreatDistBadge, ThreatTopAccent
 
 local function ProcessEntities()
@@ -1214,6 +1387,14 @@ local function ProcessEntities()
             CardKillerRole("<font color=\"rgb(255,42,133)\">CONFIRMED KILLER (ACTIVE)</font>")
         else
             CardKillerRole("<font color=\"rgb(115,105,140)\">SURVIVOR / WAITING</font>")
+        end
+    end
+
+    if CardPlayerRole then
+        if not IsLocalPlayerKiller() then
+            CardPlayerRole("<font color=\"rgb(0,240,255)\">SURVIVOR / PLAYER (ACTIVE)</font>")
+        else
+            CardPlayerRole("<font color=\"rgb(115,105,140)\">PLAYING AS KILLER (MUTED)</font>")
         end
     end
 
@@ -2457,14 +2638,75 @@ function Builder:Tab(name, description)
     return Widgets
 end
 
-local PageCombat   = Builder:Tab("COMBAT", "AUTOMATED DEFENSE & PARRY TIMING")
+local PagePlayer   = Builder:Tab("PLAYER ONLY", "SURVIVOR PROTOCOLS // PARRY, SPEED & NO STUN")
 local PageKiller   = Builder:Tab("KILLER ONLY", "EXCLUSIVE PROTOCOLS // ANTI STUN & FAST SPEED")
+local PageCombat   = Builder:Tab("COMBAT", "AUTOMATED DEFENSE & PARRY TIMING")
 local PageAuto     = Builder:Tab("AUTOMATION", "SMART GREAT ENGINE // ZERO CONFIGURATION")
 local PageESP      = Builder:Tab("VISUALS", "ESP SYSTEM // TAP TO ON OR OFF")
 local PageThreat   = Builder:Tab("RADAR", "THREAT PROXIMITY & LINE-OF-SIGHT SENSORS")
 local PageWorld    = Builder:Tab("WORLD", "ENVIRONMENTAL LIGHTING & FOV CONTROL")
 local PageIntel    = Builder:Tab("INTEL", "LIVE MATCH TELEMETRY & ACTIVE KILLER STATS")
 local PageSettings = Builder:Tab("SETTINGS", "CACHE MANAGEMENT & ENGINE CONTROLS")
+
+-- Player Protocols: PLAYER ONLY (Auto Parry Killer, Speed Adjust & No Stun)
+CardPlayerRole = PagePlayer:Card("Player Role Detection", "CHECKING ROLE...", C_CYAN)
+
+-- Combat: Auto Parry Killer (Strictly Player parry from Killer hit)
+PagePlayer:Toggle("Auto Parry Killer Attacks", Config.Combat.AutoParry, function(v)
+    Config.Combat.AutoParry = v
+    Config.Player.AutoParry = v
+end, Config.Palette.VicePink)
+
+PagePlayer:Toggle("360-Degree Parry Protection", not Config.Combat.FaceCheck, function(v)
+    Config.Combat.FaceCheck = not v
+end)
+
+PagePlayer:Slider("Parry Trigger Distance", 8, 20, Config.Combat.ParryDistance, " STUDS", false, function(v)
+    Config.Combat.ParryDistance = v
+end)
+
+PagePlayer:Button("MANUAL TEST PARRY (RIGHT CLICK)", false, function()
+    ExecuteAutoParry("MANUAL_TEST")
+end)
+
+-- Player Speed Adjust
+PagePlayer:Toggle("Player Fast Speed Boost", Config.Player.FastSpeed, function(v)
+    Config.Player.FastSpeed = v
+    if not v and LocalPlayer.Character then
+        local human = LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
+        if human then human.WalkSpeed = 16 end
+    end
+end, C_CYAN)
+
+PagePlayer:Slider("Player WalkSpeed", 16, 45, Config.Player.SpeedValue, " STUDS/S", false, function(v)
+    Config.Player.SpeedValue = v
+    if Config.Player.FastSpeed and ShouldApplyPlayerMods() and LocalPlayer.Character then
+        local human = LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
+        if human then human.WalkSpeed = v end
+    end
+end)
+
+-- Player No Stun
+PagePlayer:Toggle("No Stun / Anti Stun (Player)", Config.Player.AntiStun, function(v)
+    Config.Player.AntiStun = v
+    if v and LocalPlayer.Character then
+        CleanPlayerStunEffects(LocalPlayer.Character)
+    end
+end, C_CYAN)
+
+PagePlayer:Button("INSTANT RECOVER / CLEAR STUN", false, function()
+    if LocalPlayer.Character then
+        CleanPlayerStunEffects(LocalPlayer.Character)
+    end
+end)
+
+PagePlayer:Toggle("Enforce Player Role Only", Config.Player.OnlyWhenPlayer, function(v)
+    Config.Player.OnlyWhenPlayer = v
+    if v and IsLocalPlayerKiller() and LocalPlayer.Character then
+        local human = LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
+        if human then human.WalkSpeed = 16 end
+    end
+end)
 
 -- Combat Protocols
 PageCombat:Toggle("Auto Parry Killer Attacks", Config.Combat.AutoParry, function(v) Config.Combat.AutoParry = v end, Config.Palette.VicePink)
@@ -2708,6 +2950,9 @@ State.Connections.Heartbeat = Services.Run.Heartbeat:Connect(function()
     -- Killer Protocols: Anti Stun & Fast Speed Enforcement
     ProcessKillerProtocols()
 
+    -- Player Protocols: Anti Stun & Fast Speed Enforcement (Survivor)
+    ProcessPlayerProtocols()
+
     -- Real-time Entity Processing & Auto Parry: Runs at full Heartbeat rate!
     if now - lastHeartbeat >= 0.03 then
         lastHeartbeat = now
@@ -2723,11 +2968,13 @@ LocalPlayer.CharacterAdded:Connect(function(char)
     table.clear(State.Animators)
     table.clear(State.AnchorCache)
     BindLocalCharacterKillerMods(char)
+    BindLocalCharacterPlayerMods(char)
 end)
 
 if LocalPlayer.Character then
     task.spawn(function()
         BindLocalCharacterKillerMods(LocalPlayer.Character)
+        BindLocalCharacterPlayerMods(LocalPlayer.Character)
     end)
 end
 
