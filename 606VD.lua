@@ -31,8 +31,8 @@ local Config = {
     },
     Combat = {
         AutoParry = true,
-        ParryDistance = 14.0,
-        ParryCooldown = 0.85,
+        ParryDistance = 15.0,
+        ParryCooldown = 0.80,
         FaceCheck = false -- Disabled by default for 360-degree parry protection against spins and flicks
     },
     Player = {
@@ -330,6 +330,41 @@ local function GetPlayerRole(player)
         return "Killer"
     end
     return "Survivor"
+end
+
+local function IsLocalPlayerKiller()
+    if State.ActiveKiller == LocalPlayer then return true end
+    if State.ActiveKiller and State.ActiveKiller ~= LocalPlayer then return false end
+
+    local killer = ResolveSingleKiller()
+    if killer == LocalPlayer then return true end
+    if killer and killer ~= LocalPlayer then return false end
+
+    local team = LocalPlayer.Team and LocalPlayer.Team.Name:lower() or ""
+    if (team:find("killer") or team:find("slasher") or team:find("hunter") or team:find("murderer") or team:find("beast") or team:find("stalker") or team:find("hidden") or team:find("abysswalker") or team:find("veil") or team:find("cure")) and not (team:find("survivor") or team:find("victim")) then
+        return true
+    end
+
+    local role = tostring(GetGameValue(LocalPlayer, "Role") or GetGameValue(LocalPlayer, "SelectedKiller") or ""):lower()
+    if role:find("killer") or role:find("slasher") or role:find("stalker") or role:find("hidden") or role:find("abysswalker") or role:find("veil") or role:find("cure") then return true end
+    if GetGameValue(LocalPlayer, "IsKiller") == true then return true end
+
+    local char = LocalPlayer.Character
+    if char then
+        if GetGameValue(char, "IsKiller") == true or GetGameValue(char, "Mask") ~= nil or char:FindFirstChild("Carrying") then
+            return true
+        end
+        for _, item in ipairs(char:GetChildren()) do
+            if item:IsA("Tool") then
+                local n = item.Name:lower()
+                if n:find("knife") or n:find("machete") or n:find("chainsaw") or n:find("cleaver") or n:find("axe") or n:find("hammer") or n:find("slasher") or n:find("scythe") or n:find("claws") or n:find("weapon") then
+                    return true
+                end
+            end
+        end
+    end
+
+    return false
 end
 
 local StaticLOSParams = RaycastParams.new()
@@ -741,12 +776,16 @@ end
 local AttackKeywords = {
     "swing", "slash", "attack", "hit", "strike", "knife", "machete", "heavy",
     "light", "cleave", "stab", "lunge", "kill", "punch", "smash", "weapon",
-    "hammer", "axe", "down", "combat", "slasher", "murder", "cut", "chop"
+    "hammer", "axe", "down", "combat", "slasher", "murder", "cut", "chop",
+    "m1", "m2", "atk", "melee", "thrust", "whack", "bash", "grab", "claw",
+    "rend", "assault", "execute", "fire", "shoot", "bite", "primary", "combo",
+    "swipe", "charge", "slam", "hack", "killerattack", "bludgeon", "whip"
 }
 
 local IgnoreKeywords = {
     "walk", "run", "idle", "sprint", "fall", "jump", "land", "crouch",
-    "vault", "climb", "emote", "dance", "sit", "breathe", "turn", "inspect"
+    "vault", "climb", "emote", "dance", "sit", "breathe", "turn", "inspect",
+    "repair", "heal"
 }
 
 local function GetCharacterAnimator(char)
@@ -779,18 +818,21 @@ local function IsAttackAnimation(track)
         tName = tName .. " " .. aName
     end
 
-    for _, ign in ipairs(IgnoreKeywords) do
-        if tName:find(ign) then
-            return false
-        end
-    end
-
+    -- Priority 1: Direct Attack Keywords match (Always takes precedence over movement)
     for _, kw in ipairs(AttackKeywords) do
         if tName:find(kw) or animId:find(kw) then
             return true
         end
     end
 
+    -- Priority 2: Ignore non-combat movement/interaction animations
+    for _, ign in ipairs(IgnoreKeywords) do
+        if tName:find(ign) then
+            return false
+        end
+    end
+
+    -- Priority 3: Action Priority Animations
     local prio = track.Priority
     if prio == Enum.AnimationPriority.Action 
         or prio == Enum.AnimationPriority.Action2 
@@ -812,34 +854,122 @@ local function ExecuteAutoParry(source)
     State.LastParryTick = now
 
     task.spawn(function()
+        local myChar = LocalPlayer.Character
+        local human = myChar and myChar:FindFirstChildOfClass("Humanoid")
+        local bp = LocalPlayer:FindFirstChildOfClass("Backpack")
+
+        -- 1. Auto-Equip Parrying Dagger if unequipped or stored in Backpack
+        local daggerTool = nil
+        if myChar then
+            for _, item in ipairs(myChar:GetChildren()) do
+                if item:IsA("Tool") then
+                    local n = item.Name:lower()
+                    if n:find("parry") or n:find("dagger") or n:find("counter") or n:find("knife") or n:find("guard") or n:find("shield") or n:find("blade") then
+                        daggerTool = item
+                        break
+                    end
+                end
+            end
+        end
+
+        if not daggerTool and bp then
+            for _, item in ipairs(bp:GetChildren()) do
+                if item:IsA("Tool") then
+                    local n = item.Name:lower()
+                    if n:find("parry") or n:find("dagger") or n:find("counter") or n:find("knife") or n:find("guard") or n:find("shield") or n:find("blade") then
+                        daggerTool = item
+                        if human then
+                            pcall(function() human:EquipTool(item) end)
+                        end
+                        break
+                    end
+                end
+            end
+        end
+
+        -- If no specific dagger name found, but player has a tool in backpack, equip it
+        if not daggerTool and bp and human then
+            local bpTools = bp:GetChildren()
+            if #bpTools == 1 and bpTools[1]:IsA("Tool") then
+                daggerTool = bpTools[1]
+                pcall(function() human:EquipTool(daggerTool) end)
+            end
+        end
+
+        -- 2. Direct Tool Activation (fires Tool:Activate and firesignal if present)
+        if daggerTool then
+            pcall(function() daggerTool:Activate() end)
+            if firesignal then
+                pcall(function() firesignal(daggerTool.Activated) end)
+            end
+        end
+
         local mPos = Services.Input:GetMouseLocation()
 
-        -- 1. VirtualInputManager MouseButton2 (Right Click)
+        -- 3. Primary Actuator: MouseButton1 (Left Click - Standard PC Parrying Dagger strike)
+        pcall(function()
+            Services.VIM:SendMouseButtonEvent(mPos.X, mPos.Y, 0, true, game, 1)
+        end)
+        if mouse1press then
+            pcall(mouse1press)
+        elseif mouse1click then
+            pcall(mouse1click)
+        end
+        pcall(function()
+            local vu = game:GetService("VirtualUser")
+            vu:Button1Down(Vector2.new(mPos.X, mPos.Y))
+        end)
+
+        -- 4. Secondary Actuator: MouseButton2 (Right Click - Guard / Block stance fallback)
         pcall(function()
             Services.VIM:SendMouseButtonEvent(mPos.X, mPos.Y, 1, true, game, 1)
         end)
-
-        -- 2. Native Executor mouse2 press / click
         if mouse2press then
             pcall(mouse2press)
         elseif mouse2click then
             pcall(mouse2click)
         end
-
-        -- 3. VirtualUser Right Click (Button2Down)
         pcall(function()
             local vu = game:GetService("VirtualUser")
             vu:Button2Down(Vector2.new(mPos.X, mPos.Y))
         end)
 
-        -- 4. Mobile Screen GUI Button (Parry / Block / Guard)
+        -- 5. Fallback Keypresses: F, E, Q, 1 (Hotbar slot 1)
+        pcall(function()
+            Services.VIM:SendKeyEvent(true, Enum.KeyCode.F, false, game)
+        end)
+        pcall(function()
+            Services.VIM:SendKeyEvent(true, Enum.KeyCode.E, false, game)
+        end)
+        pcall(function()
+            Services.VIM:SendKeyEvent(true, Enum.KeyCode.One, false, game)
+        end)
+
+        -- 6. Mobile Touch & Screen GUI Buttons
         pcall(function()
             local pg = LocalPlayer:FindFirstChildOfClass("PlayerGui")
             if pg then
+                local mob = pg:FindFirstChild("Survivor-mob")
+                if mob then
+                    for _, d in ipairs(mob:GetDescendants()) do
+                        if (d:IsA("ImageButton") or d:IsA("TextButton")) and d.Visible then
+                            local dName = d.Name:lower()
+                            if dName:find("action") or dName:find("parry") or dName:find("dagger") or dName:find("counter") or dName:find("item") or dName:find("use") or dName:find("ability") then
+                                if firesignal then
+                                    firesignal(d.Activated)
+                                    firesignal(d.MouseButton1Click)
+                                elseif d.Activated then
+                                    d.Activated:Fire()
+                                end
+                            end
+                        end
+                    end
+                end
+
                 for _, desc in ipairs(pg:GetDescendants()) do
                     if (desc:IsA("ImageButton") or desc:IsA("TextButton")) and desc.Visible then
                         local dName = desc.Name:lower()
-                        if dName:find("parry") or dName:find("block") or dName:find("guard") or dName:find("defend") then
+                        if dName:find("parry") or dName:find("dagger") or dName:find("counter") or dName:find("block") or dName:find("guard") or dName:find("defend") then
                             if firesignal then
                                 firesignal(desc.Activated)
                                 firesignal(desc.MouseButton1Click)
@@ -852,27 +982,27 @@ local function ExecuteAutoParry(source)
             end
         end)
 
-        -- 5. Fallback Keypress (F key)
-        pcall(function()
-            Services.VIM:SendKeyEvent(true, Enum.KeyCode.F, false, game)
-        end)
-
-        -- Hold right click for parry active window (160ms) to ensure engine registration
+        -- Hold stance active window (160ms) to ensure engine registration
         task.wait(0.16)
 
         -- Clean input release
         pcall(function()
+            Services.VIM:SendMouseButtonEvent(mPos.X, mPos.Y, 0, false, game, 1)
+        end)
+        pcall(function()
             Services.VIM:SendMouseButtonEvent(mPos.X, mPos.Y, 1, false, game, 1)
         end)
-        if mouse2release then
-            pcall(mouse2release)
-        end
+        if mouse1release then pcall(mouse1release) end
+        if mouse2release then pcall(mouse2release) end
         pcall(function()
             local vu = game:GetService("VirtualUser")
+            vu:Button1Up(Vector2.new(mPos.X, mPos.Y))
             vu:Button2Up(Vector2.new(mPos.X, mPos.Y))
         end)
         pcall(function()
             Services.VIM:SendKeyEvent(false, Enum.KeyCode.F, false, game)
+            Services.VIM:SendKeyEvent(false, Enum.KeyCode.E, false, game)
+            Services.VIM:SendKeyEvent(false, Enum.KeyCode.One, false, game)
         end)
     end)
     return true
@@ -880,10 +1010,8 @@ end
 
 local function CheckAndTriggerParry(char, player, track)
     if not Config.Combat.AutoParry or not char then return end
-
-    -- STRICT SINGLE KILLER VERIFICATION: Auto Parry ONLY triggers player to killer!
-    local killer = State.ActiveKiller or ResolveSingleKiller()
-    if not killer or player ~= killer then return end
+    if IsLocalPlayerKiller() then return end
+    if player == LocalPlayer then return end
 
     local myChar = LocalPlayer.Character
     local myRoot = myChar and myChar:FindFirstChild("HumanoidRootPart")
@@ -907,7 +1035,7 @@ local function CheckAndTriggerParry(char, player, track)
         isAttack = true
     end
 
-    -- Trigger Auto Parry ONLY on genuine attacks from the true killer
+    -- Trigger Auto Parry on any attack from hostile characters within range
     if isAttack then
         ExecuteAutoParry("KILLER_ATTACK_DETECTED")
     end
@@ -915,10 +1043,6 @@ end
 
 local function BindCombatListeners(player, char)
     if player == LocalPlayer or not char then return end
-
-    -- Strictly only bind to the Killer (never bind to survivors/players)
-    local killer = State.ActiveKiller or ResolveSingleKiller()
-    if not killer or player ~= killer then return end
 
     if State.CombatBound[char] then return end
     State.CombatBound[char] = true
@@ -974,40 +1098,6 @@ local StunAttrNames = {
     "ragdoll", "ragdolled", "headache", "palletstun"
 }
 
-local function IsLocalPlayerKiller()
-    if State.ActiveKiller == LocalPlayer then return true end
-    if State.ActiveKiller and State.ActiveKiller ~= LocalPlayer then return false end
-
-    local killer = ResolveSingleKiller()
-    if killer == LocalPlayer then return true end
-    if killer and killer ~= LocalPlayer then return false end
-
-    local team = LocalPlayer.Team and LocalPlayer.Team.Name:lower() or ""
-    if (team:find("killer") or team:find("slasher") or team:find("hunter") or team:find("murderer") or team:find("beast")) and not team:find("survivor") then
-        return true
-    end
-
-    local role = tostring(GetGameValue(LocalPlayer, "Role") or GetGameValue(LocalPlayer, "SelectedKiller") or ""):lower()
-    if role:find("killer") or role:find("slasher") then return true end
-    if GetGameValue(LocalPlayer, "IsKiller") == true then return true end
-
-    local char = LocalPlayer.Character
-    if char then
-        if GetGameValue(char, "IsKiller") == true or GetGameValue(char, "Mask") ~= nil or char:FindFirstChild("Carrying") then
-            return true
-        end
-        for _, item in ipairs(char:GetChildren()) do
-            if item:IsA("Tool") then
-                local n = item.Name:lower()
-                if n:find("knife") or n:find("machete") or n:find("chainsaw") or n:find("cleaver") or n:find("axe") or n:find("hammer") or n:find("slasher") then
-                    return true
-                end
-            end
-        end
-    end
-
-    return false
-end
 
 local function ShouldApplyKillerMods()
     if not Config.Killer.OnlyWhenKiller then
@@ -1455,8 +1545,8 @@ local function ProcessEntities()
                     -- STRICT SINGLE KILLER LOGIC: Only the true 1 killer is killer. All others are Player/Survivor!
                     local isKiller = (p == killer)
 
-                    -- Multi-Layer Combat Binding (Strictly Killer Only!)
-                    if isKiller then
+                    -- Multi-Layer Combat Binding (Real-time monitoring for all hostile attacks)
+                    if p ~= LocalPlayer then
                         BindCombatListeners(p, char)
                     end
 
@@ -1509,29 +1599,32 @@ local function ProcessEntities()
     end
 
     -- Frame-by-Frame Active Attack & Lunge Monitor (Catches mid-strike dash & lunge attacks)
-    -- Strictly only active for Survivors against the Killer! Never runs if LocalPlayer is Killer!
+    -- Strictly only active for Survivors against hostile attacks! Never runs if LocalPlayer is Killer!
     if Config.Combat.AutoParry and myRoot and not IsLocalPlayerKiller() then
-        local checkTarget = killer or State.ActiveKiller
-        if checkTarget and checkTarget ~= LocalPlayer and checkTarget.Character then
-            local c = checkTarget.Character
-            local r = c:FindFirstChild("HumanoidRootPart") or c.PrimaryPart or ResolveAnchorPart(c)
-            if r and r:IsA("BasePart") then
-                local dist = (r.Position - myRoot.Position).Magnitude
-                if dist <= Config.Combat.ParryDistance then
-                    local anim = GetCharacterAnimator(c)
-                    if anim then
-                        local tracks = anim:GetPlayingAnimationTracks()
-                        for _, tr in ipairs(tracks) do
-                            if tr.IsPlaying and tr.TimePosition < 0.45 and IsAttackAnimation(tr) then
-                                if Config.Combat.FaceCheck then
-                                    local toMe = (myRoot.Position - r.Position).Unit
-                                    if r.CFrame.LookVector:Dot(toMe) >= -0.2 then
-                                        ExecuteAutoParry("ACTIVE_LUNGE_TRACK")
-                                        break
+        for _, p in ipairs(Services.Players:GetPlayers()) do
+            if p ~= LocalPlayer and p.Character then
+                local c = p.Character
+                local r = c:FindFirstChild("HumanoidRootPart") or c.PrimaryPart or ResolveAnchorPart(c)
+                if r and r:IsA("BasePart") then
+                    local dist = (r.Position - myRoot.Position).Magnitude
+                    if dist <= Config.Combat.ParryDistance then
+                        local anim = GetCharacterAnimator(c)
+                        if anim then
+                            local ok, tracks = pcall(function() return anim:GetPlayingAnimationTracks() end)
+                            if ok and tracks then
+                                for _, tr in ipairs(tracks) do
+                                    if tr.IsPlaying and IsAttackAnimation(tr) then
+                                        if Config.Combat.FaceCheck then
+                                            local toMe = (myRoot.Position - r.Position).Unit
+                                            if r.CFrame.LookVector:Dot(toMe) >= -0.2 then
+                                                ExecuteAutoParry("ACTIVE_LUNGE_TRACK")
+                                                break
+                                            end
+                                        else
+                                            ExecuteAutoParry("ACTIVE_LUNGE_TRACK")
+                                            break
+                                        end
                                     end
-                                else
-                                    ExecuteAutoParry("ACTIVE_LUNGE_TRACK")
-                                    break
                                 end
                             end
                         end
