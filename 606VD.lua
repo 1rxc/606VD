@@ -68,7 +68,7 @@ local Config = {
         HealthBars = true,
         GenProgressBars = true,
         ShowDistance = true,
-        MaxHighlights = 8
+        MaxHighlights = 32
     },
     Radar = {
         Enabled = true,
@@ -121,6 +121,7 @@ local MaskIntel = {
 local State = {
     Connections = {},
     Highlights = {},
+    Boxes = {},
     HighlightCount = 0,
     Billboards = {},
     Generators = {},
@@ -531,25 +532,34 @@ end
 -- HIGHLIGHT ENGINE (CRASH-PROOF & INSTANCE CAPPED)
 --------------------------------------------------------------------------------
 
+local ESPFolder = Instance.new("Folder")
+ESPFolder.Name = "VD_ESP_Folder"
+pcall(function()
+    ESPFolder.Parent = game:GetService("CoreGui")
+end)
+if not ESPFolder.Parent then
+    pcall(function() ESPFolder.Parent = Services.Workspace.CurrentCamera end)
+end
+if not ESPFolder.Parent then
+    pcall(function() ESPFolder.Parent = LocalPlayer:FindFirstChildOfClass("PlayerGui") end)
+end
+
 local function SafeHighlight(object, color, priority)
     if not Config.Visuals.MasterESP or not object then return end
 
     local hl = State.Highlights[object]
+    local sb = State.Boxes and State.Boxes[object]
+
+    -- Update existing highlight and 3D box color if already present
     if hl and hl.Parent then
         if hl.FillColor ~= color then
             hl.FillColor = color
             hl.OutlineColor = color
         end
-        return hl
-    end
-
-    hl = object:FindFirstChild("VD_Highlight")
-    if hl then
-        if hl.FillColor ~= color then
-            hl.FillColor = color
-            hl.OutlineColor = color
+        if sb and sb.Parent and sb.Color3 ~= color then
+            sb.Color3 = color
+            sb.SurfaceColor3 = color
         end
-        State.Highlights[object] = hl
         return hl
     end
 
@@ -557,35 +567,57 @@ local function SafeHighlight(object, color, priority)
         return nil
     end
 
+    -- 1. Create Vibrant Full-Body Highlight (Glowing Chams)
     local ok, newHl = pcall(function()
         local h = Instance.new("Highlight")
-        h.Name = "VD_Highlight"
-        h.FillTransparency = 0.65
-        h.OutlineTransparency = 0.1
+        h.Name = "VD_HL_" .. tostring(object.Name)
+        h.FillTransparency = 0.35 -- Vibrant, clearly visible body fill through walls
+        h.OutlineTransparency = 0.0 -- Solid, sharp glowing body outline
         h.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
         h.Adornee = object
         h.FillColor = color
         h.OutlineColor = color
-        h.Parent = object
+        h.Parent = ESPFolder or object
         return h
     end)
 
     if ok and newHl then
         State.Highlights[object] = newHl
         State.HighlightCount = State.HighlightCount + 1
-        return newHl
     end
-    return nil
+
+    -- 2. Create Universal 3D Body Cham Box (Guaranteed visible on ALL graphics levels & devices)
+    pcall(function()
+        local box = Instance.new("SelectionBox")
+        box.Name = "VD_BOX_" .. tostring(object.Name)
+        box.Adornee = object
+        box.Color3 = color
+        box.LineThickness = 0.04
+        box.SurfaceTransparency = 0.70
+        box.SurfaceColor3 = color
+        box.AlwaysOnTop = true
+        box.Parent = ESPFolder or object
+        if not State.Boxes then State.Boxes = {} end
+        State.Boxes[object] = box
+    end)
+
+    return newHl
 end
 
 local function RemoveHighlight(object)
     if not object then return end
-    local hl = State.Highlights[object] or object:FindFirstChild("VD_Highlight")
+    local hl = State.Highlights[object]
     if hl then
         pcall(function() hl:Destroy() end)
         State.Highlights[object] = nil
         State.HighlightCount = math.max(0, State.HighlightCount - 1)
     end
+    if State.Boxes and State.Boxes[object] then
+        pcall(function() State.Boxes[object]:Destroy() end)
+        State.Boxes[object] = nil
+    end
+    local legacy = object:FindFirstChild("VD_Highlight")
+    if legacy then pcall(function() legacy:Destroy() end) end
 end
 
 --------------------------------------------------------------------------------
@@ -682,6 +714,10 @@ local function IndexWorldObjects()
         if not obj or not obj.Parent or not hl or not hl.Parent then
             if hl then pcall(function() hl:Destroy() end) end
             State.Highlights[obj] = nil
+            if State.Boxes and State.Boxes[obj] then
+                pcall(function() State.Boxes[obj]:Destroy() end)
+                State.Boxes[obj] = nil
+            end
         else
             actualCount = actualCount + 1
         end
@@ -1627,7 +1663,7 @@ local function ProcessEntities()
                             end
                         end
 
-                        SafeHighlight(char, color, isKiller)
+                        SafeHighlight(char, color, true) -- Top priority for all player character bodies!
                     else
                         local oldTag = char:FindFirstChild("ESP_Tag", true) or (root and root:FindFirstChild("ESP_Tag"))
                         if oldTag then oldTag:Destroy() end
@@ -2017,6 +2053,12 @@ local function UnloadScript()
         if hl then pcall(function() hl:Destroy() end) end
     end
     table.clear(State.Highlights)
+    if State.Boxes then
+        for obj, b in pairs(State.Boxes) do
+            if b then pcall(function() b:Destroy() end) end
+        end
+        table.clear(State.Boxes)
+    end
     State.HighlightCount = 0
 
     -- Remove all 3D Billboard Tags
@@ -3074,8 +3116,12 @@ PageESP:Toggle("Master Visuals", Config.Visuals.MasterESP, function(v)
     if not v then
         for _, tag in ipairs(State.Billboards) do if tag then tag:Destroy() end end
         table.clear(State.Billboards)
-        for obj, hl in pairs(State.Highlights) do if hl then hl:Destroy() end end
+        for obj, hl in pairs(State.Highlights) do if hl then pcall(function() hl:Destroy() end) end end
         table.clear(State.Highlights)
+        if State.Boxes then
+            for obj, b in pairs(State.Boxes) do if b then pcall(function() b:Destroy() end) end end
+            table.clear(State.Boxes)
+        end
     end
 end)
 
