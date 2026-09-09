@@ -68,7 +68,7 @@ local Config = {
         HealthBars = true,
         GenProgressBars = true,
         ShowDistance = true,
-        MaxHighlights = 24
+        MaxHighlights = 8
     },
     Radar = {
         Enabled = true,
@@ -135,6 +135,13 @@ local State = {
     ParryConnections = {},
     KillerConnections = {},
     PlayerConnections = {},
+    GenProgObjCache = {},
+    GenDoneObjCache = {},
+    GenPrompts = {},
+    LastKillerCheck = 0,
+    LastLightingTick = 0,
+    LastPlayerESP = 0,
+    SkillEngineInitialized = false,
     SkillLoop = nil,
     LastNeedleRot = nil,
     LastParryTick = 0,
@@ -225,6 +232,12 @@ end
 -- SMART SINGLE KILLER RESOLUTION (GUARANTEES EXACTLY 1 KILLER IN GAME)
 -- If a player is not the 1 killer, they are strictly treated as a player/survivor!
 local function ResolveSingleKiller()
+    local now = tick()
+    if State.ActiveKiller and State.ActiveKiller.Parent == Services.Players and (now - State.LastKillerCheck < 0.4) then
+        return State.ActiveKiller
+    end
+    State.LastKillerCheck = now
+
     -- Check if currently cached killer is still valid and in the match
     if State.ActiveKiller and State.ActiveKiller.Parent == Services.Players then
         local cChar = State.ActiveKiller.Character
@@ -319,14 +332,15 @@ local function GetPlayerRole(player)
     return "Survivor"
 end
 
+local StaticLOSParams = RaycastParams.new()
+StaticLOSParams.FilterType = Enum.RaycastFilterType.Exclude
+StaticLOSParams.IgnoreWater = true
+
 local function HasLineOfSight(originPart, targetPart)
     if not originPart or not targetPart then return false end
-    local params = RaycastParams.new()
-    params.FilterType = Enum.RaycastFilterType.Exclude
-    params.FilterDescendantsInstances = {LocalPlayer.Character, targetPart.Parent}
-    params.IgnoreWater = true
+    StaticLOSParams.FilterDescendantsInstances = {LocalPlayer.Character, targetPart.Parent}
     local dir = (targetPart.Position - originPart.Position)
-    local res = Services.Workspace:Raycast(originPart.Position, dir, params)
+    local res = Services.Workspace:Raycast(originPart.Position, dir, StaticLOSParams)
     return res == nil
 end
 
@@ -350,13 +364,28 @@ end
 
 local function GetGeneratorProgress(gen)
     if not gen then return 0 end
+
+    local cachedObj = State.GenProgObjCache[gen]
+    if cachedObj then
+        if typeof(cachedObj) == "string" then
+            local v = gen:GetAttribute(cachedObj)
+            if type(v) == "number" then return v end
+        elseif cachedObj.Parent then
+            return cachedObj.Value or 0
+        end
+    end
+
     for _, attr in ipairs({"RepairProgress", "Progress", "Percent", "Repaired", "Amount"}) do
         local v = gen:GetAttribute(attr)
-        if type(v) == "number" then return v end
+        if type(v) == "number" then
+            State.GenProgObjCache[gen] = attr
+            return v
+        end
     end
     for _, name in ipairs({"RepairProgress", "Progress", "Percent", "Repaired", "Value"}) do
         local valObj = gen:FindFirstChild(name, true)
         if valObj and (valObj:IsA("NumberValue") or valObj:IsA("IntValue")) then
+            State.GenProgObjCache[gen] = valObj
             return valObj.Value
         end
     end
@@ -364,6 +393,7 @@ local function GetGeneratorProgress(gen)
     if cfg then
         for _, vObj in ipairs(cfg:GetChildren()) do
             if vObj:IsA("NumberValue") or vObj:IsA("IntValue") then
+                State.GenProgObjCache[gen] = vObj
                 return vObj.Value
             end
         end
@@ -376,10 +406,19 @@ local function IsGeneratorCompleted(gen, progress)
     if gen:GetAttribute("Completed") == true or gen:GetAttribute("Finished") == true or gen:GetAttribute("Powered") == true then
         return true
     end
+    local cachedDone = State.GenDoneObjCache[gen]
+    if cachedDone then
+        if typeof(cachedDone) == "string" then
+            return gen:GetAttribute(cachedDone) == true
+        elseif cachedDone.Parent then
+            return cachedDone.Value == true
+        end
+    end
     for _, name in ipairs({"Completed", "Finished", "Powered", "Done"}) do
         local b = gen:FindFirstChild(name, true)
-        if b and b:IsA("BoolValue") and b.Value == true then
-            return true
+        if b and b:IsA("BoolValue") then
+            State.GenDoneObjCache[gen] = b
+            if b.Value == true then return true end
         end
     end
     return false
@@ -394,15 +433,19 @@ local function SafeHighlight(object, color, priority)
 
     local hl = State.Highlights[object]
     if hl and hl.Parent then
-        hl.FillColor = color
-        hl.OutlineColor = color
+        if hl.FillColor ~= color then
+            hl.FillColor = color
+            hl.OutlineColor = color
+        end
         return hl
     end
 
     hl = object:FindFirstChild("VD_Highlight")
     if hl then
-        hl.FillColor = color
-        hl.OutlineColor = color
+        if hl.FillColor ~= color then
+            hl.FillColor = color
+            hl.OutlineColor = color
+        end
         State.Highlights[object] = hl
         return hl
     end
@@ -511,23 +554,15 @@ local function IndexWorldObjects()
     for _, root in ipairs(searchRoots) do
         if root then
             for _, obj in ipairs(root:GetDescendants()) do
-                if not checked[obj] then
-                    -- Filter out animation data, poses, keyframes, and constraint objects
-                    if obj:IsA("Keyframe") or obj:IsA("Pose") or obj:IsA("KeyframeSequence") or obj:IsA("Animation") then
-                        checked[obj] = true
-                    elseif obj:FindFirstAncestorOfClass("KeyframeSequence") or obj:FindFirstAncestor("AnimSaves") or obj:FindFirstAncestor("RagdollConstraints") then
-                        checked[obj] = true
-                    elseif not (obj:IsA("Model") or obj:IsA("BasePart")) then
-                        checked[obj] = true
-                    else
-                        local name = obj.Name:lower()
-                        if IsGeneratorModel(obj) then
-                            checked[obj] = true; table.insert(gens, obj)
-                        elseif (name == "gate" or name:find("exitgate") or name:find("door")) and obj:IsA("Model") then
-                            checked[obj] = true; table.insert(gates, obj)
-                        elseif name == "hatch" or name == "trapdoor" or name:find("hatch") then
-                            checked[obj] = true; table.insert(hatches, obj)
-                        end
+                if obj:IsA("Model") and not checked[obj] then
+                    checked[obj] = true
+                    local name = obj.Name:lower()
+                    if IsGeneratorModel(obj) then
+                        table.insert(gens, obj)
+                    elseif (name == "gate" or name:find("exitgate") or name:find("door")) then
+                        table.insert(gates, obj)
+                    elseif name == "hatch" or name == "trapdoor" or name:find("hatch") then
+                        table.insert(hatches, obj)
                     end
                 end
             end
@@ -621,11 +656,17 @@ local function ProcessWorldESP()
                     end
                 end
 
-                SafeHighlight(gen, col, true)
+                if dist <= 75 and State.HighlightCount < Config.Visuals.MaxHighlights then
+                    SafeHighlight(anchor, col, false)
+                else
+                    RemoveHighlight(gen)
+                    RemoveHighlight(anchor)
+                end
             else
                 local oldTag = gen:FindFirstChild("ESP_Tag", true)
                 if oldTag then oldTag:Destroy() end
                 RemoveHighlight(gen)
+                RemoveHighlight(anchor)
             end
         else
             table.remove(State.Generators, i)
@@ -935,8 +976,11 @@ local StunAttrNames = {
 
 local function IsLocalPlayerKiller()
     if State.ActiveKiller == LocalPlayer then return true end
+    if State.ActiveKiller and State.ActiveKiller ~= LocalPlayer then return false end
+
     local killer = ResolveSingleKiller()
     if killer == LocalPlayer then return true end
+    if killer and killer ~= LocalPlayer then return false end
 
     local team = LocalPlayer.Team and LocalPlayer.Team.Name:lower() or ""
     if (team:find("killer") or team:find("slasher") or team:find("hunter") or team:find("murderer") or team:find("beast")) and not team:find("survivor") then
@@ -1682,6 +1726,9 @@ local function BindSkillCheckGui(prompt)
 end
 
 local function InitializeSkillEngine()
+    if State.SkillEngineInitialized then return end
+    State.SkillEngineInitialized = true
+
     task.spawn(function()
         for _, c in ipairs(PlayerGui:GetChildren()) do
             if c.Name == "SkillCheckPromptGui" or c.Name:find("SkillCheck") then
@@ -1696,10 +1743,10 @@ local function InitializeSkillEngine()
         end)
     end)
 
-    -- Auto Generator Repair Proximity Assist Loop
+    -- Auto Generator Repair Proximity Assist Loop (Throttled & Prompt Cached)
     task.spawn(function()
         while true do
-            task.wait(0.25)
+            task.wait(0.5)
             if Config.System.Active and Config.Automation.AutoRepair and LocalPlayer.Character then
                 local root = LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
                 if root and State.Generators and #State.Generators > 0 then
@@ -1711,15 +1758,23 @@ local function InitializeSkillEngine()
                                 if anchor then
                                     local dist = (anchor.Position - root.Position).Magnitude
                                     if dist <= 14 then
-                                        for _, p in ipairs(gen:GetDescendants()) do
-                                            if p:IsA("ProximityPrompt") and p.Enabled then
-                                                pcall(function()
-                                                    if fireproximityprompt then
-                                                        fireproximityprompt(p, 0)
-                                                    end
-                                                end)
-                                                break
+                                        local prompt = State.GenPrompts[gen]
+                                        if not prompt or not prompt.Parent then
+                                            for _, p in ipairs(gen:GetDescendants()) do
+                                                if p:IsA("ProximityPrompt") then
+                                                    prompt = p
+                                                    State.GenPrompts[gen] = p
+                                                    break
+                                                end
                                             end
+                                        end
+                                        if prompt and prompt.Enabled then
+                                            pcall(function()
+                                                if fireproximityprompt then
+                                                    fireproximityprompt(prompt, 0)
+                                                end
+                                            end)
+                                            break
                                         end
                                     end
                                 end
@@ -2921,15 +2976,21 @@ end)
 State.Connections.Heartbeat = Services.Run.Heartbeat:Connect(function()
     local now = tick()
 
-    if Config.Environment.Fullbright then
-        Services.Lighting.Ambient = Color3.fromRGB(255, 255, 255)
-        Services.Lighting.OutdoorAmbient = Color3.fromRGB(255, 255, 255)
-        Services.Lighting.Brightness = 2
-        Services.Lighting.ClockTime = 14
-    end
-    if Config.Environment.RemoveFog then
-        Services.Lighting.GlobalShadows = false
-        Services.Lighting.FogEnd = 1e5
+    -- Throttled Environmental Lighting: Runs at ~0.5 Hz (Zero frame stutter!)
+    if now - State.LastLightingTick >= 1.5 then
+        State.LastLightingTick = now
+        if Config.Environment.Fullbright then
+            if Services.Lighting.Brightness ~= 2 then Services.Lighting.Brightness = 2 end
+            if Services.Lighting.ClockTime ~= 14 then Services.Lighting.ClockTime = 14 end
+            if Services.Lighting.Ambient ~= Color3.fromRGB(255, 255, 255) then
+                Services.Lighting.Ambient = Color3.fromRGB(255, 255, 255)
+                Services.Lighting.OutdoorAmbient = Color3.fromRGB(255, 255, 255)
+            end
+        end
+        if Config.Environment.RemoveFog then
+            if Services.Lighting.GlobalShadows ~= false then Services.Lighting.GlobalShadows = false end
+            if Services.Lighting.FogEnd < 1e5 then Services.Lighting.FogEnd = 1e5 end
+        end
     end
 
     -- Periodic Map Re-index: Throttled to 16 seconds (Prevents heavy lag spikes!)
