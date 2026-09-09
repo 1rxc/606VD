@@ -755,6 +755,9 @@ local function IsAttackAnimation(track)
 end
 
 local function ExecuteAutoParry(source)
+    -- STRICT SAFETY: Killer can never auto-parry themselves! Only survivors parry killers!
+    if IsLocalPlayerKiller() then return false end
+
     local now = tick()
     if now - State.LastParryTick < Config.Combat.ParryCooldown then return false end
     State.LastParryTick = now
@@ -914,12 +917,12 @@ end
 
 local StunKeywords = {
     "stun", "blind", "flashed", "flashlight", "daze", "dazed", "headache",
-    "stumble", "pallet", "hit", "hurt", "knock", "fall", "drop", "freeze"
+    "stumble", "pallet"
 }
 
 local StunAttrNames = {
-    "stunned", "isstunned", "stun", "blind", "blinded", "ragdoll", "ragdolled",
-    "slowed", "slow", "frozen", "cantmove", "cannotmove", "disabled"
+    "stunned", "isstunned", "stun", "blind", "blinded", "flashed",
+    "ragdoll", "ragdolled", "headache", "palletstun"
 }
 
 local function IsLocalPlayerKiller()
@@ -971,7 +974,13 @@ local function CheckAndCancelStunAnim(track)
         local aName = (track.Animation.Name or ""):lower()
         tName = tName .. " " .. aName
     end
-    if tName:find("attack") or tName:find("swing") or tName:find("slash") or tName:find("walk") or tName:find("run") or tName:find("idle") then
+    -- Protect ALL combat, weapon, hit, wipe, lunge, and recovery animations from ever being cancelled!
+    if tName:find("attack") or tName:find("swing") or tName:find("slash") 
+        or tName:find("hit") or tName:find("wipe") or tName:find("cooldown") 
+        or tName:find("lunge") or tName:find("weapon") or tName:find("m1")
+        or tName:find("knife") or tName:find("machete") or tName:find("axe") 
+        or tName:find("cleaver") or tName:find("hammer") or tName:find("bat")
+        or tName:find("walk") or tName:find("run") or tName:find("idle") then
         return false
     end
     for _, kw in ipairs(StunKeywords) do
@@ -1062,14 +1071,24 @@ local function ProcessKillerProtocols()
     local root = char:FindFirstChild("HumanoidRootPart")
     if not human or human.Health <= 0 or not root then return end
 
-    -- 1. Anti Stun Protocol
+    -- 1. Anti Stun Protocol (Only trigger on genuine ragdoll/stun states, never on attack recovery)
     if Config.Killer.AntiStun then
         if human.PlatformStand 
             or human:GetState() == Enum.HumanoidStateType.Ragdoll 
             or human:GetState() == Enum.HumanoidStateType.Physics 
-            or human:GetState() == Enum.HumanoidStateType.PlatformStanding 
-            or human.WalkSpeed == 0 then
+            or human:GetState() == Enum.HumanoidStateType.PlatformStanding
+            or char:GetAttribute("Stunned") == true
+            or char:GetAttribute("IsStunned") == true then
             CleanStunEffects(char)
+        end
+    end
+
+    -- 1B. Killer Weapon Left-Click Safeguard: Keep weapon tool ready and enabled
+    for _, item in ipairs(char:GetChildren()) do
+        if item:IsA("Tool") then
+            if not item.Enabled then
+                item.Enabled = true
+            end
         end
     end
 
@@ -1265,9 +1284,10 @@ local function ProcessEntities()
     end
 
     -- Frame-by-Frame Active Attack & Lunge Monitor (Catches mid-strike dash & lunge attacks)
-    if Config.Combat.AutoParry and myRoot then
+    -- Strictly only active for Survivors against the Killer! Never runs if LocalPlayer is Killer!
+    if Config.Combat.AutoParry and myRoot and not IsLocalPlayerKiller() then
         local checkTarget = killer or State.ActiveKiller
-        if checkTarget and checkTarget.Character then
+        if checkTarget and checkTarget ~= LocalPlayer and checkTarget.Character then
             local c = checkTarget.Character
             local r = c:FindFirstChild("HumanoidRootPart") or c.PrimaryPart or ResolveAnchorPart(c)
             if r and r:IsA("BasePart") then
@@ -1297,13 +1317,15 @@ local function ProcessEntities()
     end
 
     -- Threat Radar HUD (Sleek Tactical Alert)
+    -- Strictly for Survivors: When playing as Killer, hide the threat radar HUD completely!
     if ThreatRadarHUD then
-        if Config.Radar.Enabled and Config.Radar.ThreatMeter and killerDist <= Config.Radar.Radius then
+        local isLocalKiller = IsLocalPlayerKiller() or (killer == LocalPlayer)
+        if not isLocalKiller and Config.Radar.Enabled and Config.Radar.ThreatMeter and killer and killer ~= LocalPlayer and killerDist <= Config.Radar.Radius then
             ThreatRadarHUD.Visible = true
             local factor = 1 - math.clamp(killerDist / Config.Radar.Radius, 0, 1)
             ThreatBarFill.Size = UDim2.new(factor, 0, 1, 0)
 
-            local kName = killer and killer.DisplayName:upper() or "UNKNOWN KILLER"
+            local kName = killer.DisplayName:upper()
             if ThreatDistBadge then
                 ThreatDistBadge.Text = string.format("%dM", math.floor(killerDist))
             end
