@@ -972,45 +972,23 @@ local function ExecuteAutoParry(source)
             end
         end
 
-        -- 2. Direct Tool Activation
-        if daggerTool then
-            pcall(function() daggerTool:Activate() end)
-            if firesignal then
-                pcall(function() firesignal(daggerTool.Activated) end)
-            end
-        end
-
         local mPos = Services.Input:GetMouseLocation()
 
-        -- 3. Crisp Left Click tap (MouseButton1 - Parrying Dagger counter stance activation)
-        pcall(function()
-            Services.VIM:SendMouseButtonEvent(mPos.X, mPos.Y, 0, true, game, 1)
-        end)
-        if mouse1click then
-            pcall(mouse1click)
-        elseif mouse1press then
-            pcall(mouse1press)
-        end
-        pcall(function()
-            local vu = game:GetService("VirtualUser")
-            vu:Button1Down(Vector2.new(mPos.X, mPos.Y))
-        end)
-
-        -- 4. Secondary Right Click tap (MouseButton2)
+        -- 2. STRICTLY RIGHT CLICK ONLY (MouseButton2 - Pure Parry / Guard Stance)
         pcall(function()
             Services.VIM:SendMouseButtonEvent(mPos.X, mPos.Y, 1, true, game, 1)
         end)
-        if mouse2click then
+        if mouse2press then
+            pcall(mouse2press)
+        elseif mouse2click then
             pcall(mouse2click)
         end
-
-        -- 5. Fallback Keypress F and hotbar 1
         pcall(function()
-            Services.VIM:SendKeyEvent(true, Enum.KeyCode.F, false, game)
-            Services.VIM:SendKeyEvent(true, Enum.KeyCode.One, false, game)
+            local vu = game:GetService("VirtualUser")
+            vu:Button2Down(Vector2.new(mPos.X, mPos.Y))
         end)
 
-        -- 6. Mobile Parry / Action Button
+        -- 3. Mobile Parry / Guard Button (For mobile players)
         pcall(function()
             local pg = LocalPlayer:FindFirstChildOfClass("PlayerGui")
             if pg then
@@ -1019,7 +997,7 @@ local function ExecuteAutoParry(source)
                     for _, d in ipairs(mob:GetDescendants()) do
                         if (d:IsA("ImageButton") or d:IsA("TextButton")) and d.Visible then
                             local dName = d.Name:lower()
-                            if dName:find("parry") or dName:find("dagger") or dName:find("counter") or dName:find("action") then
+                            if dName:find("parry") or dName:find("guard") or dName:find("block") or dName:find("counter") or dName:find("defend") then
                                 if firesignal then
                                     firesignal(d.Activated)
                                     firesignal(d.MouseButton1Click)
@@ -1030,28 +1008,36 @@ local function ExecuteAutoParry(source)
                         end
                     end
                 end
+
+                for _, desc in ipairs(pg:GetDescendants()) do
+                    if (desc:IsA("ImageButton") or desc:IsA("TextButton")) and desc.Visible then
+                        local dName = desc.Name:lower()
+                        if dName:find("parry") or dName:find("guard") or dName:find("block") or dName:find("counter") or dName:find("defend") then
+                            if firesignal then
+                                firesignal(desc.Activated)
+                                firesignal(desc.MouseButton1Click)
+                            elseif desc.Activated then
+                                desc.Activated:Fire()
+                            end
+                        end
+                    end
+                end
             end
         end)
 
-        -- Hold for 0.08s (5 frames) to guarantee game engine registers the click down
-        task.wait(0.08)
+        -- Hold Right Click for parry active counter-stance window (140ms)
+        task.wait(0.14)
 
-        -- Clean release
-        pcall(function()
-            Services.VIM:SendMouseButtonEvent(mPos.X, mPos.Y, 0, false, game, 1)
-        end)
+        -- Clean release - Strictly Right Click Up
         pcall(function()
             Services.VIM:SendMouseButtonEvent(mPos.X, mPos.Y, 1, false, game, 1)
         end)
-        if mouse1release then pcall(mouse1release) end
+        if mouse2release then
+            pcall(mouse2release)
+        end
         pcall(function()
             local vu = game:GetService("VirtualUser")
-            vu:Button1Up(Vector2.new(mPos.X, mPos.Y))
             vu:Button2Up(Vector2.new(mPos.X, mPos.Y))
-        end)
-        pcall(function()
-            Services.VIM:SendKeyEvent(false, Enum.KeyCode.F, false, game)
-            Services.VIM:SendKeyEvent(false, Enum.KeyCode.One, false, game)
         end)
     end)
     return true
@@ -2916,7 +2902,7 @@ PagePlayer:Slider("Parry Trigger Distance", 6, 16, Config.Combat.ParryDistance, 
     Config.Combat.ParryDistance = v
 end)
 
-PagePlayer:Button("MANUAL TEST PARRY (STANCE)", false, function()
+PagePlayer:Button("MANUAL TEST PARRY (RIGHT CLICK)", false, function()
     ExecuteAutoParry("MANUAL_TEST")
 end)
 
@@ -2963,7 +2949,7 @@ end)
 PageCombat:Toggle("Auto Parry Killer Attacks", Config.Combat.AutoParry, function(v) Config.Combat.AutoParry = v end, Config.Palette.VicePink)
 PageCombat:Toggle("Facing Angle Verification", Config.Combat.FaceCheck, function(v) Config.Combat.FaceCheck = v end)
 PageCombat:Slider("Parry Trigger Distance", 6, 16, Config.Combat.ParryDistance, " STUDS", false, function(v) Config.Combat.ParryDistance = v end)
-PageCombat:Button("MANUAL TEST PARRY (STANCE)", false, function()
+PageCombat:Button("MANUAL TEST PARRY (RIGHT CLICK)", false, function()
     ExecuteAutoParry("MANUAL_TEST")
 end)
 
