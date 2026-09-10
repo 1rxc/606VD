@@ -30,13 +30,13 @@ local Config = {
         AltKey = Enum.KeyCode.V
     },
     Combat = {
-        AutoParry = true,
-        ParryDistance = 13.0, -- True killer attack range with network lag buffer
+        AutoParry = false, -- Activates only when user taps enable in the menu
+        ParryDistance = 12.0, -- True killer melee strike range
         ParryCooldown = 0.90, -- Perfectly covers the 0.8s counter stance window without spamming
-        FaceCheck = false     -- 360-degree parry protection against spins and flicks
+        FaceCheck = false     -- 360-degree parry protection against surprise attacks
     },
     Player = {
-        AutoParry = true, -- Strict Player to Killer Parry
+        AutoParry = false, -- Activates only when user taps enable in the menu
         AntiStun = true,  -- No Stun for Player/Survivor
         FastSpeed = false, -- Player Speed Boost
         SpeedValue = 22,   -- Normal player speed is 16
@@ -913,11 +913,11 @@ local function GetCharacterAnimator(char)
     return a
 end
 
--- Comprehensive attack detector: Identifies both named and unnamed Roblox Action strikes
+-- Strictly detects genuine Killer attack strikes (ignoring movement and interactions)
 local function IsAttackAnimation(track)
     if not track then return false end
 
-    -- 1. Looped animations are never attacks (walk, run, sprint, idle, and gen repair are always looped)
+    -- 1. Looped animations are NEVER attacks (walk, run, sprint, idle, and gen repair are always looped)
     if track.Looped == true then
         return false
     end
@@ -930,7 +930,7 @@ local function IsAttackAnimation(track)
         tName = tName .. " " .. aName
     end
 
-    -- 2. Filter out non-attack actions (repair, door, heal, etc.)
+    -- 2. Filter out non-attack actions
     for _, ign in ipairs(IgnoreKeywords) do
         if tName:find(ign) and not (tName:find("attack") or tName:find("swing") or tName:find("slash") or tName:find("hit") or tName:find("strike") or tName:find("m1")) then
             return false
@@ -944,7 +944,7 @@ local function IsAttackAnimation(track)
         end
     end
 
-    -- 4. Check Action priority & short non-looped duration (catches unnamed Studio animations)
+    -- 4. Check Action priority & short non-looped duration (unnamed Roblox Studio attack animations)
     local prio = track.Priority
     local isActionPrio = (prio == Enum.AnimationPriority.Action 
         or prio == Enum.AnimationPriority.Action2 
@@ -955,7 +955,7 @@ local function IsAttackAnimation(track)
 
     if isActionPrio then
         local len = track.Length or 0
-        if len == 0 or (len >= 0.2 and len <= 2.5) then
+        if len == 0 or (len >= 0.2 and len <= 2.2) then
             return true
         end
     end
@@ -963,13 +963,14 @@ local function IsAttackAnimation(track)
     return false
 end
 
--- Reliable Parrying Dagger actuator (Left-Click, Right-Click, Tool Activate, Keybinds, Zero spam)
+-- Precise Right-Click Parry: Executes ONLY when enabled, Right-Click only, 0ms equip delay
 local function ExecuteAutoParry(source)
-    -- STRICT SAFETY: Killer can never auto-parry themselves! Only survivors parry killers!
+    -- STRICT SAFETY: Only works when user taps enable, and LocalPlayer is NOT the Killer!
+    if not Config.Combat.AutoParry then return false end
     if IsLocalPlayerKiller() then return false end
 
     local now = tick()
-    -- ANTI-SPAM LOCKOUT: 0.9s lockout covers the 0.8s counter-stance window without spamming
+    -- ANTI-SPAM LOCKOUT: Cooldown cleanly covers the counter-stance window without spamming
     if now - State.LastParryTick < Config.Combat.ParryCooldown then return false end
     State.LastParryTick = now
 
@@ -978,7 +979,7 @@ local function ExecuteAutoParry(source)
         local human = myChar and myChar:FindFirstChildOfClass("Humanoid")
         local bp = LocalPlayer:FindFirstChildOfClass("Backpack")
 
-        -- 1. Auto-Equip Parrying Dagger if unequipped in Backpack
+        -- 1. Equip Parrying Dagger if unequipped in Backpack
         local daggerTool = nil
         if myChar then
             for _, item in ipairs(myChar:GetChildren()) do
@@ -1061,8 +1062,8 @@ local function ExecuteAutoParry(source)
             end
         end)
 
-        -- Hold Right Click for parry active counter-stance window (140ms)
-        task.wait(0.14)
+        -- Hold Right Click for counter-stance window (150ms) to ensure full engine registration
+        task.wait(0.15)
 
         -- Clean release - Strictly Right Click Up
         pcall(function()
@@ -1079,13 +1080,14 @@ local function ExecuteAutoParry(source)
     return true
 end
 
--- Strictly checks and triggers parry ONLY for Player against the true Killer
+-- Smartly triggers parry ONLY when the Killer taps hit within striking range
 local function CheckAndTriggerParry(char, player, track)
+    -- ONLY WHEN TAP ENABLE: Must be actively enabled by user
     if not Config.Combat.AutoParry or not char then return end
     if IsLocalPlayerKiller() then return end
     if player == LocalPlayer then return end
 
-    -- STRICT SINGLE KILLER VERIFICATION: Auto Parry ONLY triggers player to killer!
+    -- STRICT SINGLE KILLER VERIFICATION: Parries ONLY against the true Killer
     if not IsTargetKiller(player) then return end
 
     local myChar = LocalPlayer.Character
@@ -1095,26 +1097,26 @@ local function CheckAndTriggerParry(char, player, track)
     local tRoot = char:FindFirstChild("HumanoidRootPart") or char.PrimaryPart or ResolveAnchorPart(char)
     if not tRoot or not tRoot:IsA("BasePart") then return end
 
+    -- Distance gate: Killer must be within melee attack reach
     local dist = (tRoot.Position - myRoot.Position).Magnitude
     if dist > Config.Combat.ParryDistance then return end
 
-    if Config.Combat.FaceCheck then
-        local toMe = (myRoot.Position - tRoot.Position).Unit
-        if tRoot.CFrame.LookVector:Dot(toMe) < -0.25 then return end
-    end
+    -- Direction gate: Killer must be facing towards survivor when tapping hit
+    local toMe = (myRoot.Position - tRoot.Position).Unit
+    if tRoot.CFrame.LookVector:Dot(toMe) < -0.25 then return end
 
-    -- Track deduplication: Ensure one parry per attack swing
+    -- Track deduplication: Ensure exactly one parry per attack swing
     if track then
         if State.ParriedTracks[track] then return end
         if not IsAttackAnimation(track) then return end
         State.ParriedTracks[track] = true
     end
 
-    -- Trigger single crisp Auto Parry on genuine Killer attack
-    ExecuteAutoParry("KILLER_ATTACK_DETECTED")
+    -- Trigger single crisp Right-Click Parry ONLY when Killer taps hit
+    ExecuteAutoParry("KILLER_TAP_HIT")
 end
 
--- Strictly binds combat listeners ONLY to the Killer (never other survivors)
+-- Strictly binds combat listeners ONLY to the Killer
 local function BindCombatListeners(player, char)
     if player == LocalPlayer or not char then return end
 
@@ -1132,27 +1134,6 @@ local function BindCombatListeners(player, char)
         end)
         table.insert(State.ParryConnections, conn)
     end
-
-    for _, item in ipairs(char:GetChildren()) do
-        if item:IsA("Tool") and not item:GetAttribute("ParryBound") then
-            item:SetAttribute("ParryBound", true)
-            local tConn = item.Activated:Connect(function()
-                CheckAndTriggerParry(char, player, nil)
-            end)
-            table.insert(State.ParryConnections, tConn)
-        end
-    end
-
-    local cConn = char.ChildAdded:Connect(function(child)
-        if child:IsA("Tool") and not child:GetAttribute("ParryBound") then
-            child:SetAttribute("ParryBound", true)
-            local tConn = child.Activated:Connect(function()
-                CheckAndTriggerParry(char, player, nil)
-            end)
-            table.insert(State.ParryConnections, tConn)
-        end
-    end)
-    table.insert(State.ParryConnections, cConn)
 end
 
 --------------------------------------------------------------------------------
@@ -1674,8 +1655,8 @@ local function ProcessEntities()
         end
     end
 
-    -- Frame-by-Frame Active Attack Monitor (Strictly Player parry against Killer when Killer hits!)
-    -- Strictly only active for Survivors against the Killer! Never runs if LocalPlayer is Killer!
+    -- Frame-by-Frame Active Attack Monitor (Parries ONLY when Killer taps hit!)
+    -- Strictly only active when AutoParry is enabled and LocalPlayer is Survivor!
     if Config.Combat.AutoParry and myRoot and not IsLocalPlayerKiller() then
         -- Clear old parried tracks cache periodically to keep memory pristine
         local nowTick = tick()
@@ -1699,59 +1680,25 @@ local function ProcessEntities()
             local r = c:FindFirstChild("HumanoidRootPart") or c.PrimaryPart or ResolveAnchorPart(c)
             if r and r:IsA("BasePart") then
                 local dist = (r.Position - myRoot.Position).Magnitude
-
-                -- AUTO-PREPARE PARRYING DAGGER: If killer is within 25 studs, keep Parrying Dagger ready in hand!
-                if dist <= 25 and myChar then
-                    local currentTool = myChar:FindFirstChildOfClass("Tool")
-                    if not currentTool then
-                        local bp = LocalPlayer:FindFirstChildOfClass("Backpack")
-                        if bp then
-                            for _, item in ipairs(bp:GetChildren()) do
-                                if item:IsA("Tool") then
-                                    local n = item.Name:lower()
-                                    if n:find("parry") or n:find("dagger") or n:find("counter") then
-                                        local human = myChar:FindFirstChildOfClass("Humanoid")
-                                        if human then pcall(function() human:EquipTool(item) end) end
-                                        break
-                                    end
-                                end
-                            end
-                        end
-                    end
-                end
-
-                -- HIT DETECTION: Trigger parry when Killer attacks within strike range!
+                -- Killer must be within melee strike distance
                 if dist <= Config.Combat.ParryDistance then
-                    local anim = GetCharacterAnimator(c)
-                    if anim then
-                        local ok, tracks = pcall(function() return anim:GetPlayingAnimationTracks() end)
-                        if ok and tracks then
-                            for _, tr in ipairs(tracks) do
-                                if tr.IsPlaying and not State.ParriedTracks[tr] and tr.TimePosition < 0.75 and IsAttackAnimation(tr) then
-                                    if Config.Combat.FaceCheck then
-                                        local toMe = (myRoot.Position - r.Position).Unit
-                                        if r.CFrame.LookVector:Dot(toMe) >= -0.25 then
-                                            State.ParriedTracks[tr] = true
-                                            ExecuteAutoParry("ACTIVE_LUNGE_TRACK")
-                                            break
-                                        end
-                                    else
+                    local toMe = (myRoot.Position - r.Position).Unit
+                    -- Killer must be facing towards survivor
+                    local isFacingMe = r.CFrame.LookVector:Dot(toMe) >= -0.25
+                    if isFacingMe then
+                        local anim = GetCharacterAnimator(c)
+                        if anim then
+                            local ok, tracks = pcall(function() return anim:GetPlayingAnimationTracks() end)
+                            if ok and tracks then
+                                for _, tr in ipairs(tracks) do
+                                    -- Smartly detects the exact moment the killer taps hit (TimePosition < 0.45)
+                                    if tr.IsPlaying and not State.ParriedTracks[tr] and tr.TimePosition < 0.45 and IsAttackAnimation(tr) then
                                         State.ParriedTracks[tr] = true
-                                        ExecuteAutoParry("ACTIVE_LUNGE_TRACK")
+                                        ExecuteAutoParry("KILLER_TAP_HIT_TRACK")
                                         break
                                     end
                                 end
                             end
-                        end
-                    end
-
-                    -- IMMEDIATE PROXIMITY SWING SAFETY: If Killer is within 7.5 studs, facing directly at survivor and closing in
-                    local toMe = (myRoot.Position - r.Position).Unit
-                    local isFacingMe = r.CFrame.LookVector:Dot(toMe) > 0.4
-                    if dist <= 7.5 and isFacingMe and not IsLocalPlayerKiller() then
-                        local human = c:FindFirstChildOfClass("Humanoid")
-                        if human and human.MoveDirection.Magnitude > 0 then
-                            ExecuteAutoParry("PROXIMITY_STRIKE_DEFENSE")
                         end
                     end
                 end
@@ -2988,7 +2935,10 @@ PagePlayer:Toggle("Enforce Player Role Only", Config.Player.OnlyWhenPlayer, func
 end)
 
 -- Combat Protocols
-PageCombat:Toggle("Auto Parry Killer Attacks", Config.Combat.AutoParry, function(v) Config.Combat.AutoParry = v end, Config.Palette.VicePink)
+PageCombat:Toggle("Auto Parry Killer Attacks", Config.Combat.AutoParry, function(v)
+    Config.Combat.AutoParry = v
+    Config.Player.AutoParry = v
+end, Config.Palette.VicePink)
 PageCombat:Toggle("Facing Angle Verification", Config.Combat.FaceCheck, function(v) Config.Combat.FaceCheck = v end)
 PageCombat:Slider("Parry Trigger Distance", 6, 16, Config.Combat.ParryDistance, " STUDS", false, function(v) Config.Combat.ParryDistance = v end)
 PageCombat:Button("MANUAL TEST PARRY (RIGHT CLICK)", false, function()
