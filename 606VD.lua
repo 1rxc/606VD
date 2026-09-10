@@ -2123,11 +2123,17 @@ local function InitializeSkillEngine()
 end
 
 --------------------------------------------------------------------------------
--- 606 GTA 6 LUXURY UI ENGINE (ZERO STROKES // STRICT ZERO EMOJIS)
+-- 606VD // OBSIDIAN UI SUITE (LOADED VIA OFFICIAL OBSIDIAN UI LIBRARY)
 --------------------------------------------------------------------------------
 
+local repo = "https://raw.githubusercontent.com/deividcomsono/Obsidian/main/"
+local Library = loadstring(game:HttpGet(repo .. "Library.lua"))()
+local ThemeManager = loadstring(game:HttpGet(repo .. "addons/ThemeManager.lua"))()
+local SaveManager = loadstring(game:HttpGet(repo .. "addons/SaveManager.lua"))()
+
+-- Threat Radar HUD Overlay (On-screen tactical threat display)
 local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = "ViolenceDistrict_Suite"
+ScreenGui.Name = "606VD_ThreatOverlay"
 ScreenGui.ResetOnSpawn = false
 ScreenGui.DisplayOrder = 9999
 ScreenGui.IgnoreGuiInset = true
@@ -2143,57 +2149,87 @@ pcall(function()
     end
 end)
 
--- Comprehensive Script Close & Unload Engine
+ThreatRadarHUD = Instance.new("Frame", ScreenGui)
+ThreatRadarHUD.Name = "ThreatRadar"
+ThreatRadarHUD.Size = UDim2.new(0, 340, 0, 46)
+ThreatRadarHUD.Position = UDim2.new(0.5, -170, 0, 22)
+ThreatRadarHUD.BackgroundColor3 = Color3.fromRGB(15, 12, 18)
+ThreatRadarHUD.BorderSizePixel = 0
+ThreatRadarHUD.Visible = false
+Instance.new("UICorner", ThreatRadarHUD).CornerRadius = UDim.new(0, 8)
+
+ThreatTopAccent = Instance.new("Frame", ThreatRadarHUD)
+ThreatTopAccent.Size = UDim2.new(1, 0, 0, 2)
+ThreatTopAccent.Position = UDim2.new(0, 0, 0, 0)
+ThreatTopAccent.BackgroundColor3 = Config.Palette.Killer
+ThreatTopAccent.BorderSizePixel = 0
+Instance.new("UICorner", ThreatTopAccent).CornerRadius = UDim.new(1, 0)
+
+ThreatTitle = Instance.new("TextLabel", ThreatRadarHUD)
+ThreatTitle.Size = UDim2.new(1, -80, 0, 18)
+ThreatTitle.Position = UDim2.new(0, 12, 0, 6)
+ThreatTitle.BackgroundTransparency = 1
+ThreatTitle.TextColor3 = Config.Palette.Killer
+ThreatTitle.Font = Enum.Font.GothamBold
+ThreatTitle.TextSize = 10
+ThreatTitle.Text = "THREAT DETECTED // ACTIVE SCAN"
+ThreatTitle.TextXAlignment = Enum.TextXAlignment.Left
+
+ThreatDistBadge = Instance.new("TextLabel", ThreatRadarHUD)
+ThreatDistBadge.Size = UDim2.new(0, 56, 0, 18)
+ThreatDistBadge.Position = UDim2.new(1, -66, 0, 6)
+ThreatDistBadge.BackgroundColor3 = Color3.fromRGB(25, 20, 30)
+ThreatDistBadge.TextColor3 = Config.Palette.Survivor
+ThreatDistBadge.Font = Enum.Font.GothamBold
+ThreatDistBadge.TextSize = 10
+ThreatDistBadge.Text = "--M"
+ThreatDistBadge.BorderSizePixel = 0
+Instance.new("UICorner", ThreatDistBadge).CornerRadius = UDim.new(0, 4)
+
+local ThreatBarBG = Instance.new("Frame", ThreatRadarHUD)
+ThreatBarBG.Size = UDim2.new(1, -24, 0, 5)
+ThreatBarBG.Position = UDim2.new(0, 12, 0, 29)
+ThreatBarBG.BackgroundColor3 = Color3.fromRGB(28, 18, 32)
+ThreatBarBG.BorderSizePixel = 0
+Instance.new("UICorner", ThreatBarBG).CornerRadius = UDim.new(1, 0)
+
+ThreatBarFill = Instance.new("Frame", ThreatBarBG)
+ThreatBarFill.Size = UDim2.new(0.5, 0, 1, 0)
+ThreatBarFill.BackgroundColor3 = Config.Palette.Killer
+ThreatBarFill.BorderSizePixel = 0
+Instance.new("UICorner", ThreatBarFill).CornerRadius = UDim.new(1, 0)
+
+-- Unload Script Function
 local function UnloadScript()
     Config.System.Active = false
     Config.Combat.AutoParry = false
     Config.Automation.AutoGreatCheck = false
+    Config.Visuals.MasterESP = false
+    Config.Player.FastSpeed = false
+    Config.Killer.FastSpeed = false
 
-    -- Disconnect all active connections
-    for _, c in pairs(State.Connections) do
-        if c and c.Disconnect then pcall(function() c:Disconnect() end) end
+    for name, conn in pairs(State.Connections) do
+        if conn and conn.Disconnect then pcall(function() conn:Disconnect() end) end
     end
     table.clear(State.Connections)
 
-    for _, c in pairs(State.ParryConnections) do
-        if c and c.Disconnect then pcall(function() c:Disconnect() end) end
-    end
-    table.clear(State.ParryConnections)
-
-    if State.SkillLoop then
-        pcall(function() State.SkillLoop:Disconnect() end)
-        State.SkillLoop = nil
-    end
-
-    -- Remove all 3D Highlights
-    for obj, hl in pairs(State.Highlights) do
-        if hl then pcall(function() hl:Destroy() end) end
-    end
-    table.clear(State.Highlights)
-    if State.Boxes then
-        for obj, b in pairs(State.Boxes) do
-            if b then pcall(function() b:Destroy() end) end
-        end
-        table.clear(State.Boxes)
-    end
-    State.HighlightCount = 0
-
-    -- Remove all 3D Billboard Tags
-    for _, b in pairs(State.Billboards) do
-        if b then pcall(function() b:Destroy() end) end
+    for _, tag in ipairs(State.Billboards) do
+        if tag and tag.Parent then pcall(function() tag:Destroy() end) end
     end
     table.clear(State.Billboards)
 
-    -- Sweep any leftover ESP tags or highlights in Workspace
-    pcall(function()
-        for _, desc in ipairs(Services.Workspace:GetDescendants()) do
-            if desc.Name == "ESP_Tag" or desc.Name == "VD_Highlight" then
-                pcall(function() desc:Destroy() end)
-            end
-        end
-    end)
+    for obj, hl in pairs(State.Highlights) do
+        if hl and hl.Parent then pcall(function() hl:Destroy() end) end
+    end
+    table.clear(State.Highlights)
 
-    -- Restore environmental lighting and player movement
+    if State.Boxes then
+        for obj, sb in pairs(State.Boxes) do
+            if sb and sb.Parent then pcall(function() sb:Destroy() end) end
+        end
+        table.clear(State.Boxes)
+    end
+
     pcall(function()
         Services.Lighting.Ambient = State.LightingDefaults.Ambient
         Services.Lighting.OutdoorAmbient = State.LightingDefaults.OutdoorAmbient
@@ -2213,1123 +2249,549 @@ local function UnloadScript()
     end
     table.clear(State.KillerConnections)
 
-    -- Destroy UI ScreenGui completely
     pcall(function()
-        ScreenGui:Destroy()
+        if ScreenGui then ScreenGui:Destroy() end
+    end)
+
+    pcall(function()
+        if Library and Library.Unload then
+            Library:Unload()
+        end
     end)
 end
 
--- Premium Red & Black Luxury Palette Hierarchy
-local C_BLACK          = Color3.fromRGB(10, 8, 12)       -- Deep Obsidian Matte
-local C_SURFACE        = Color3.fromRGB(15, 12, 17)      -- Dark Carbon Header & Sidebar
-local C_CONTAINER      = Color3.fromRGB(22, 17, 24)      -- Rich Charcoal Container Cards
-local C_CONTAINER_HOVER= Color3.fromRGB(32, 22, 32)      -- Warm Ruby Hover State
-local C_CONTAINER_ACT  = Color3.fromRGB(38, 18, 26)      -- Glowing Active Background
-local C_BORDER         = Color3.fromRGB(50, 20, 28)      -- Deep Ruby 1px Framing
-local C_BORDER_DIM     = Color3.fromRGB(32, 14, 20)      -- Dark Underline Accent
-local C_RED            = Color3.fromRGB(255, 38, 58)     -- Radiant Crimson / Blood Red
-local C_RED_DARK       = Color3.fromRGB(180, 20, 38)     -- Deep Velvet Crimson
-local C_RED_GLOW       = Color3.fromRGB(255, 75, 95)     -- Neon Ruby Highlight
-local C_WHITE          = Color3.fromRGB(252, 250, 255)   -- Pure Diamond White
-local C_MUTED          = Color3.fromRGB(135, 125, 142)   -- Sleek Metallic Platinum
-local C_MUTED_LIGHT    = Color3.fromRGB(175, 166, 185)   -- Crisp Secondary Label
-local C_GREEN          = Color3.fromRGB(0, 245, 140)     -- Tactical Emerald Status
-
--- Backwards compatibility aliases
-local C_ONYX   = C_BLACK
-local C_PINK   = C_RED
-local C_CYAN   = C_RED_GLOW
-local C_PURPLE = C_RED_DARK
-
--- Outer Shell Frame
-local Shell = Instance.new("Frame")
-Shell.Name = "Shell_VD"
-Shell.Size = UDim2.new(0, 670, 0, 425)
-Shell.Position = UDim2.new(0.5, -335, 0.5, -212)
-Shell.BackgroundColor3 = C_ONYX
-Shell.BorderSizePixel = 0
-Shell.ClipsDescendants = true
-Shell.Parent = ScreenGui
-
-Instance.new("UICorner", Shell).CornerRadius = UDim.new(0, 10)
-
--- Top Accent Ribbon (Vice City 3-Way Radiant Gradient)
-local TopRibbon = Instance.new("Frame", Shell)
-TopRibbon.Name = "TopRibbon"
-TopRibbon.Size = UDim2.new(1, 0, 0, 3)
-TopRibbon.Position = UDim2.new(0, 0, 0, 0)
-TopRibbon.BorderSizePixel = 0
-
-local RibbonGrad = Instance.new("UIGradient", TopRibbon)
-RibbonGrad.Color = ColorSequence.new({
-    ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 38, 58)),
-    ColorSequenceKeypoint.new(0.5, Color3.fromRGB(160, 16, 32)),
-    ColorSequenceKeypoint.new(1, Color3.fromRGB(255, 60, 80))
+-- Create Obsidian Window
+local Window = Library:CreateWindow({
+    Title = "606VD // PRO REALITY SUITE",
+    Footer = "v1.12 // VIOLENCE DISTRICT",
+    Icon = 95816097006870,
+    NotifySide = "Right",
+    ShowCustomCursor = false,
+    ToggleKeybind = Config.System.MenuKey
 })
 
--- Header Bar
-local Header = Instance.new("Frame", Shell)
-Header.Name = "Header"
-Header.Size = UDim2.new(1, 0, 0, 52)
-Header.Position = UDim2.new(0, 0, 0, 3)
-Header.BackgroundColor3 = C_SURFACE
-Header.BorderSizePixel = 0
-
-local HeaderBottomLine = Instance.new("Frame", Header)
-HeaderBottomLine.Size = UDim2.new(1, 0, 0, 1)
-HeaderBottomLine.Position = UDim2.new(0, 0, 1, -1)
-HeaderBottomLine.BackgroundColor3 = C_BORDER
-HeaderBottomLine.BorderSizePixel = 0
-
--- Header: 606 Title Logo (Exclusive Branding Placement)
-local BrandPill = Instance.new("Frame", Header)
-BrandPill.Name = "BrandPill"
-BrandPill.Size = UDim2.new(0, 60, 0, 26)
-BrandPill.Position = UDim2.new(0, 16, 0.5, -13)
-BrandPill.BackgroundColor3 = Color3.fromRGB(26, 14, 20)
-BrandPill.BorderSizePixel = 0
-Instance.new("UICorner", BrandPill).CornerRadius = UDim.new(0, 6)
-
-local BrandPillAccent = Instance.new("Frame", BrandPill)
-BrandPillAccent.Size = UDim2.new(0, 2, 0.6, 0)
-BrandPillAccent.Position = UDim2.new(0, 0, 0.2, 0)
-BrandPillAccent.BackgroundColor3 = C_PINK
-BrandPillAccent.BorderSizePixel = 0
-Instance.new("UICorner", BrandPillAccent).CornerRadius = UDim.new(1, 0)
-
-local Title606 = Instance.new("TextLabel", BrandPill)
-Title606.Text = "606VD"
-Title606.Size = UDim2.new(1, -2, 1, 0)
-Title606.Position = UDim2.new(0, 2, 0, 0)
-Title606.BackgroundTransparency = 1
-Title606.TextColor3 = C_PINK
-Title606.Font = Enum.Font.GothamBold
-Title606.TextSize = 13
-Title606.TextXAlignment = Enum.TextXAlignment.Center
-
-local TitleDiv = Instance.new("Frame", Header)
-TitleDiv.Size = UDim2.new(0, 1, 0, 22)
-TitleDiv.Position = UDim2.new(0, 86, 0.5, -11)
-TitleDiv.BackgroundColor3 = C_BORDER
-TitleDiv.BorderSizePixel = 0
-
-local MainTitle = Instance.new("TextLabel", Header)
-MainTitle.Text = "VIOLENCE DISTRICT"
-MainTitle.Size = UDim2.new(0, 145, 0, 18)
-MainTitle.Position = UDim2.new(0, 98, 0.5, -9)
-MainTitle.BackgroundTransparency = 1
-MainTitle.TextColor3 = C_WHITE
-MainTitle.Font = Enum.Font.GothamBold
-MainTitle.TextSize = 13
-MainTitle.TextXAlignment = Enum.TextXAlignment.Left
-
--- Header: Version 1.12 Pill Badge
-local VersionBadge = Instance.new("Frame", Header)
-VersionBadge.Name = "VersionBadge"
-VersionBadge.Size = UDim2.new(0, 44, 0, 18)
-VersionBadge.Position = UDim2.new(0, 245, 0.5, -9)
-VersionBadge.BackgroundColor3 = Color3.fromRGB(24, 18, 30)
-VersionBadge.BorderSizePixel = 0
-Instance.new("UICorner", VersionBadge).CornerRadius = UDim.new(0, 4)
-
-local VersionLabel = Instance.new("TextLabel", VersionBadge)
-VersionLabel.Text = "v1.12"
-VersionLabel.Size = UDim2.new(1, 0, 1, 0)
-VersionLabel.BackgroundTransparency = 1
-VersionLabel.TextColor3 = Color3.fromRGB(0, 240, 255)
-VersionLabel.Font = Enum.Font.GothamBold
-VersionLabel.TextSize = 10
-VersionLabel.TextXAlignment = Enum.TextXAlignment.Center
-
--- Header: Telemetry HUD Box
-local TelemetryBox = Instance.new("Frame", Header)
-TelemetryBox.Size = UDim2.new(0, 145, 0, 28)
-TelemetryBox.Position = UDim2.new(1, -225, 0.5, -14)
-TelemetryBox.BackgroundColor3 = C_CONTAINER
-TelemetryBox.BorderSizePixel = 0
-Instance.new("UICorner", TelemetryBox).CornerRadius = UDim.new(0, 6)
-
-local TelemetryDot = Instance.new("Frame", TelemetryBox)
-TelemetryDot.Size = UDim2.new(0, 6, 0, 6)
-TelemetryDot.Position = UDim2.new(0, 10, 0.5, -3)
-TelemetryDot.BackgroundColor3 = C_GREEN
-TelemetryDot.BorderSizePixel = 0
-Instance.new("UICorner", TelemetryDot).CornerRadius = UDim.new(1, 0)
-
-local TelemetryLabel = Instance.new("TextLabel", TelemetryBox)
-TelemetryLabel.Text = "60 FPS  |  20 MS"
-TelemetryLabel.Size = UDim2.new(1, -24, 1, 0)
-TelemetryLabel.Position = UDim2.new(0, 22, 0, 0)
-TelemetryLabel.BackgroundTransparency = 1
-TelemetryLabel.TextColor3 = C_MUTED_LIGHT
-TelemetryLabel.Font = Enum.Font.GothamBold
-TelemetryLabel.TextSize = 10
-TelemetryLabel.TextXAlignment = Enum.TextXAlignment.Left
-
--- Header: Minimize Window Button ("-")
-local MinBtn = Instance.new("TextButton", Header)
-MinBtn.Text = "-"
-MinBtn.Size = UDim2.new(0, 28, 0, 28)
-MinBtn.Position = UDim2.new(1, -72, 0.5, -14)
-MinBtn.BackgroundColor3 = C_CONTAINER
-MinBtn.TextColor3 = C_MUTED_LIGHT
-MinBtn.Font = Enum.Font.GothamBold
-MinBtn.TextSize = 14
-MinBtn.BorderSizePixel = 0
-Instance.new("UICorner", MinBtn).CornerRadius = UDim.new(0, 6)
-
-MinBtn.MouseEnter:Connect(function()
-    Services.Tween:Create(MinBtn, TweenInfo.new(0.15), {
-        BackgroundColor3 = C_CONTAINER_HOVER,
-        TextColor3 = C_CYAN
-    }):Play()
-end)
-
-MinBtn.MouseLeave:Connect(function()
-    Services.Tween:Create(MinBtn, TweenInfo.new(0.15), {
-        BackgroundColor3 = C_CONTAINER,
-        TextColor3 = C_MUTED_LIGHT
-    }):Play()
-end)
-
--- Header: Close / Terminate Script Button ("X")
-local CloseBtn = Instance.new("TextButton", Header)
-CloseBtn.Text = "X"
-CloseBtn.Size = UDim2.new(0, 28, 0, 28)
-CloseBtn.Position = UDim2.new(1, -38, 0.5, -14)
-CloseBtn.BackgroundColor3 = Color3.fromRGB(48, 16, 26)
-CloseBtn.TextColor3 = Color3.fromRGB(255, 75, 95)
-CloseBtn.Font = Enum.Font.GothamBold
-CloseBtn.TextSize = 11
-CloseBtn.BorderSizePixel = 0
-Instance.new("UICorner", CloseBtn).CornerRadius = UDim.new(0, 6)
-
-CloseBtn.MouseEnter:Connect(function()
-    Services.Tween:Create(CloseBtn, TweenInfo.new(0.15), {
-        BackgroundColor3 = Color3.fromRGB(255, 45, 65),
-        TextColor3 = Color3.fromRGB(255, 255, 255)
-    }):Play()
-end)
-
-CloseBtn.MouseLeave:Connect(function()
-    Services.Tween:Create(CloseBtn, TweenInfo.new(0.15), {
-        BackgroundColor3 = Color3.fromRGB(48, 16, 26),
-        TextColor3 = Color3.fromRGB(255, 75, 95)
-    }):Play()
-end)
-
--- Sidebar Layout
-local Sidebar = Instance.new("Frame", Shell)
-Sidebar.Name = "Sidebar"
-Sidebar.Size = UDim2.new(0, 160, 1, -55)
-Sidebar.Position = UDim2.new(0, 0, 0, 55)
-Sidebar.BackgroundColor3 = C_SURFACE
-Sidebar.BorderSizePixel = 0
-
-local SidebarRightLine = Instance.new("Frame", Sidebar)
-SidebarRightLine.Size = UDim2.new(0, 1, 1, 0)
-SidebarRightLine.Position = UDim2.new(1, -1, 0, 0)
-SidebarRightLine.BackgroundColor3 = C_BORDER
-SidebarRightLine.BorderSizePixel = 0
-
-local NavHeader = Instance.new("TextLabel", Sidebar)
-NavHeader.Text = "NAVIGATION"
-NavHeader.Size = UDim2.new(1, -20, 0, 16)
-NavHeader.Position = UDim2.new(0, 14, 0, 10)
-NavHeader.BackgroundTransparency = 1
-NavHeader.TextColor3 = C_MUTED
-NavHeader.Font = Enum.Font.GothamBold
-NavHeader.TextSize = 8
-NavHeader.TextXAlignment = Enum.TextXAlignment.Left
-
-local TabIndicator = Instance.new("Frame", Sidebar)
-TabIndicator.Name = "TabIndicator"
-TabIndicator.Size = UDim2.new(0, 3, 0, 20)
-TabIndicator.Position = UDim2.new(0, 4, 0, 34)
-TabIndicator.BackgroundColor3 = C_PINK
-TabIndicator.BorderSizePixel = 0
-Instance.new("UICorner", TabIndicator).CornerRadius = UDim.new(1, 0)
-
-local TabScroll = Instance.new("ScrollingFrame", Sidebar)
-TabScroll.Size = UDim2.new(1, -16, 1, -64)
-TabScroll.Position = UDim2.new(0, 10, 0, 30)
-TabScroll.BackgroundTransparency = 1
-TabScroll.ScrollBarThickness = 0
-TabScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
-
-local TabLayout = Instance.new("UIListLayout", TabScroll)
-TabLayout.Padding = UDim.new(0, 4)
-TabLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
-    TabScroll.CanvasSize = UDim2.new(0, 0, 0, TabLayout.AbsoluteContentSize.Y + 8)
-end)
-
--- Sidebar Bottom: Dedicated Close Script Button
-local CloseScriptBtn = Instance.new("TextButton", Sidebar)
-CloseScriptBtn.Size = UDim2.new(1, -16, 0, 28)
-CloseScriptBtn.Position = UDim2.new(0, 8, 1, -34)
-CloseScriptBtn.BackgroundColor3 = Color3.fromRGB(36, 16, 26)
-CloseScriptBtn.Text = "CLOSE SCRIPT"
-CloseScriptBtn.TextColor3 = Color3.fromRGB(255, 60, 80)
-CloseScriptBtn.Font = Enum.Font.GothamBold
-CloseScriptBtn.TextSize = 9
-CloseScriptBtn.BorderSizePixel = 0
-Instance.new("UICorner", CloseScriptBtn).CornerRadius = UDim.new(0, 6)
-
-CloseScriptBtn.MouseEnter:Connect(function()
-    Services.Tween:Create(CloseScriptBtn, TweenInfo.new(0.15), {
-        BackgroundColor3 = Color3.fromRGB(56, 20, 36),
-        TextColor3 = Color3.fromRGB(255, 95, 115)
-    }):Play()
-end)
-
-CloseScriptBtn.MouseLeave:Connect(function()
-    Services.Tween:Create(CloseScriptBtn, TweenInfo.new(0.15), {
-        BackgroundColor3 = Color3.fromRGB(36, 16, 26),
-        TextColor3 = Color3.fromRGB(255, 60, 80)
-    }):Play()
-end)
-
--- Main Content Area
-local Content = Instance.new("Frame", Shell)
-Content.Name = "Content"
-Content.Size = UDim2.new(1, -174, 1, -67)
-Content.Position = UDim2.new(0, 168, 0, 61)
-Content.BackgroundTransparency = 1
-
---------------------------------------------------------------------------------
--- THREAT RADAR HUD (TOP TACTICAL BANNER)
---------------------------------------------------------------------------------
-
-ThreatRadarHUD = Instance.new("Frame", ScreenGui)
-ThreatRadarHUD.Name = "ThreatRadar"
-ThreatRadarHUD.Size = UDim2.new(0, 340, 0, 46)
-ThreatRadarHUD.Position = UDim2.new(0.5, -170, 0, 22)
-ThreatRadarHUD.BackgroundColor3 = C_ONYX
-ThreatRadarHUD.BorderSizePixel = 0
-ThreatRadarHUD.Visible = false
-Instance.new("UICorner", ThreatRadarHUD).CornerRadius = UDim.new(0, 8)
-
-ThreatTopAccent = Instance.new("Frame", ThreatRadarHUD)
-ThreatTopAccent.Size = UDim2.new(1, 0, 0, 2)
-ThreatTopAccent.Position = UDim2.new(0, 0, 0, 0)
-ThreatTopAccent.BackgroundColor3 = C_PINK
-ThreatTopAccent.BorderSizePixel = 0
-Instance.new("UICorner", ThreatTopAccent).CornerRadius = UDim.new(1, 0)
-
-ThreatTitle = Instance.new("TextLabel", ThreatRadarHUD)
-ThreatTitle.Size = UDim2.new(1, -80, 0, 18)
-ThreatTitle.Position = UDim2.new(0, 12, 0, 6)
-ThreatTitle.BackgroundTransparency = 1
-ThreatTitle.TextColor3 = C_PINK
-ThreatTitle.Font = Enum.Font.GothamBold
-ThreatTitle.TextSize = 10
-ThreatTitle.Text = "THREAT DETECTED // ACTIVE SCAN"
-ThreatTitle.TextXAlignment = Enum.TextXAlignment.Left
-
-ThreatDistBadge = Instance.new("TextLabel", ThreatRadarHUD)
-ThreatDistBadge.Size = UDim2.new(0, 56, 0, 18)
-ThreatDistBadge.Position = UDim2.new(1, -66, 0, 6)
-ThreatDistBadge.BackgroundColor3 = C_CONTAINER
-ThreatDistBadge.TextColor3 = C_CYAN
-ThreatDistBadge.Font = Enum.Font.GothamBold
-ThreatDistBadge.TextSize = 10
-ThreatDistBadge.Text = "--M"
-ThreatDistBadge.BorderSizePixel = 0
-Instance.new("UICorner", ThreatDistBadge).CornerRadius = UDim.new(0, 4)
-
-local ThreatBarBG = Instance.new("Frame", ThreatRadarHUD)
-ThreatBarBG.Size = UDim2.new(1, -24, 0, 5)
-ThreatBarBG.Position = UDim2.new(0, 12, 0, 29)
-ThreatBarBG.BackgroundColor3 = Color3.fromRGB(28, 18, 32)
-ThreatBarBG.BorderSizePixel = 0
-Instance.new("UICorner", ThreatBarBG).CornerRadius = UDim.new(1, 0)
-
-ThreatBarFill = Instance.new("Frame", ThreatBarBG)
-ThreatBarFill.Size = UDim2.new(0.5, 0, 1, 0)
-ThreatBarFill.BackgroundColor3 = C_PINK
-ThreatBarFill.BorderSizePixel = 0
-Instance.new("UICorner", ThreatBarFill).CornerRadius = UDim.new(1, 0)
-
--- Mobile Floating Menu Toggle (Clean & Zero Emojis)
-local MobileBadge = Instance.new("TextButton", ScreenGui)
-MobileBadge.Name = "MobileMenuToggle"
-MobileBadge.Size = UDim2.new(0, 64, 0, 32)
-MobileBadge.Position = UDim2.new(0.04, 0, 0.25, 0)
-MobileBadge.BackgroundColor3 = C_SURFACE
-MobileBadge.Text = "MENU"
-MobileBadge.TextColor3 = C_PINK
-MobileBadge.Font = Enum.Font.GothamBold
-MobileBadge.TextSize = 11
-MobileBadge.BorderSizePixel = 0
-Instance.new("UICorner", MobileBadge).CornerRadius = UDim.new(0, 6)
-
-local MobAccent = Instance.new("Frame", MobileBadge)
-MobAccent.Size = UDim2.new(1, 0, 0, 2)
-MobAccent.Position = UDim2.new(0, 0, 1, -2)
-MobAccent.BackgroundColor3 = C_CYAN
-MobAccent.BorderSizePixel = 0
-Instance.new("UICorner", MobAccent).CornerRadius = UDim.new(1, 0)
-
--- Dragging Engine
-local function MakeDraggable(gui, handle)
-    local dragging, dragStart, startPos = false, nil, nil
-    handle.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-            dragging = true
-            dragStart = input.Position
-            startPos = gui.Position
-            input.Changed:Connect(function()
-                if input.UserInputState == Enum.UserInputState.End then dragging = false end
+-- Telemetry helper for runtime loop
+local TelemetryLabel = {
+    Text = "",
+    _last = ""
+}
+setmetatable(TelemetryLabel, {
+    __newindex = function(t, k, v)
+        if k == "Text" and v ~= t._last then
+            t._last = v
+            pcall(function()
+                if Window and Window.SetFooter then
+                    Window:SetFooter(string.format("v1.12 // %s", tostring(v)))
+                end
             end)
         end
-    end)
-    Services.Input.InputChanged:Connect(function(input)
-        if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
-            local delta = input.Position - dragStart
-            gui.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
-        end
-    end)
-end
-MakeDraggable(Shell, Header)
-MakeDraggable(MobileBadge, MobileBadge)
+        rawset(t, k, v)
+    end
+})
 
--- Toggle UI Animation Engine (Ultra Smooth Quart Easing)
-local WindowOpen = true
-local function ToggleUI()
-    WindowOpen = not WindowOpen
-    if WindowOpen then
-        Shell.Visible = true
-        Shell.Size = UDim2.new(0, 635, 0, 395)
-        Shell.BackgroundTransparency = 0.3
-        Services.Tween:Create(Shell, TweenInfo.new(0.28, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
-            Size = UDim2.new(0, 670, 0, 425),
-            BackgroundTransparency = 0
-        }):Play()
-    else
-        local tw = Services.Tween:Create(Shell, TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
-            Size = UDim2.new(0, 630, 0, 385),
-            BackgroundTransparency = 0.5
-        })
-        tw:Play()
-        tw.Completed:Connect(function()
-            if not WindowOpen then Shell.Visible = false end
-        end)
+-- Helper to create formatted dynamic Cards in Obsidian
+local function CreateObsidianCard(groupbox, title, defaultVal)
+    groupbox:AddLabel({ Text = string.format("<font color=\"rgb(140,130,160)\"><b>%s</b></font>", string.upper(title)) })
+    local valLabel = groupbox:AddLabel({ Text = tostring(defaultVal), DoesWrap = true })
+    return function(newVal)
+        if valLabel and valLabel.SetText then
+            pcall(function()
+                valLabel:SetText(tostring(newVal))
+            end)
+        end
     end
 end
 
-MinBtn.MouseButton1Click:Connect(ToggleUI)
-CloseBtn.MouseButton1Click:Connect(UnloadScript)
-CloseScriptBtn.MouseButton1Click:Connect(UnloadScript)
-MobileBadge.MouseButton1Click:Connect(ToggleUI)
-Services.Input.InputBegan:Connect(function(input, processed)
-    if not processed and (input.KeyCode == Config.System.MenuKey or input.KeyCode == Config.System.AltKey) then
-        ToggleUI()
+-- Obsidian Tabs
+local Tabs = {
+    Player     = Window:AddTab("Survivor", "user"),
+    Killer     = Window:AddTab("Killer", "swords"),
+    Automation = Window:AddTab("Automation", "cog"),
+    Visuals    = Window:AddTab("Visuals", "eye"),
+    Radar      = Window:AddTab("Radar & Intel", "activity"),
+    Settings   = Window:AddTab("Settings", "settings")
+}
+
+-- ====================================================================
+-- TAB 1: SURVIVOR (PLAYER)
+-- ====================================================================
+local PlayerLeftBox = Tabs.Player:AddLeftGroupbox("Survivor Combat & Defense")
+CardPlayerRole = CreateObsidianCard(PlayerLeftBox, "Survivor Status", "CHECKING ROLE...")
+
+PlayerLeftBox:AddToggle("AutoParry", {
+    Text = "Auto Parry Killer Attacks",
+    Default = Config.Combat.AutoParry,
+    Tooltip = "Smart parry only when killer attacks towards you",
+    Callback = function(v)
+        Config.Combat.AutoParry = v
+        Config.Player.AutoParry = v
     end
-end)
+})
 
---------------------------------------------------------------------------------
--- TAB & LUXURY CONTROL BUILDER (WITH FULL-ROW TAP-TO-TOGGLE)
---------------------------------------------------------------------------------
-
-local TabList = {}
-local Builder = {}
-
-function Builder:Tab(name, description)
-    local tabIndex = #TabList + 1
-
-    local btn = Instance.new("TextButton", TabScroll)
-    btn.Size = UDim2.new(1, 0, 0, 32)
-    btn.BackgroundColor3 = C_CONTAINER
-    btn.BackgroundTransparency = 1
-    btn.Text = "  " .. name
-    btn.TextColor3 = C_MUTED
-    btn.Font = Enum.Font.GothamMedium
-    btn.TextSize = 11
-    btn.TextXAlignment = Enum.TextXAlignment.Left
-    btn.BorderSizePixel = 0
-    Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 6)
-
-    local btnNotch = Instance.new("Frame", btn)
-    btnNotch.Size = UDim2.new(0, 2, 0, 14)
-    btnNotch.Position = UDim2.new(0, 2, 0.5, -7)
-    btnNotch.BackgroundColor3 = C_RED
-    btnNotch.BackgroundTransparency = 1
-    btnNotch.BorderSizePixel = 0
-    Instance.new("UICorner", btnNotch).CornerRadius = UDim.new(1, 0)
-
-    local page = Instance.new("ScrollingFrame", Content)
-    page.Name = name .. "_PAGE"
-    page.Size = UDim2.new(1, 0, 1, 0)
-    page.Position = UDim2.new(0, 0, 0, 0)
-    page.BackgroundTransparency = 1
-    page.ScrollBarThickness = 2
-    page.ScrollBarImageColor3 = C_RED
-    page.CanvasSize = UDim2.new(0, 0, 0, 0)
-    page.Visible = false
-
-    -- Section Header inside each page
-    local pageHeader = Instance.new("Frame", page)
-    pageHeader.Name = "PageHeader"
-    pageHeader.Size = UDim2.new(1, -6, 0, 38)
-    pageHeader.BackgroundTransparency = 1
-
-    local pageTitle = Instance.new("TextLabel", pageHeader)
-    pageTitle.Text = name .. " PROTOCOLS"
-    pageTitle.Size = UDim2.new(1, 0, 0, 16)
-    pageTitle.Position = UDim2.new(0, 2, 0, 0)
-    pageTitle.BackgroundTransparency = 1
-    pageTitle.TextColor3 = C_WHITE
-    pageTitle.Font = Enum.Font.GothamBold
-    pageTitle.TextSize = 12
-    pageTitle.TextXAlignment = Enum.TextXAlignment.Left
-
-    local pageSub = Instance.new("TextLabel", pageHeader)
-    pageSub.Text = description or "SYSTEM CONFIGURATION"
-    pageSub.Size = UDim2.new(1, 0, 0, 14)
-    pageSub.Position = UDim2.new(0, 2, 0, 16)
-    pageSub.BackgroundTransparency = 1
-    pageSub.TextColor3 = C_MUTED
-    pageSub.Font = Enum.Font.GothamMedium
-    pageSub.TextSize = 9
-    pageSub.TextXAlignment = Enum.TextXAlignment.Left
-
-    local pageLine = Instance.new("Frame", pageHeader)
-    pageLine.Size = UDim2.new(1, 0, 0, 1)
-    pageLine.Position = UDim2.new(0, 0, 1, -2)
-    pageLine.BackgroundColor3 = C_BORDER_DIM
-    pageLine.BorderSizePixel = 0
-
-    local layout = Instance.new("UIListLayout", page)
-    layout.Padding = UDim.new(0, 7)
-    layout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
-        page.CanvasSize = UDim2.new(0, 0, 0, layout.AbsoluteContentSize.Y + 16)
-    end)
-
-    local function Switch()
-        for _, t in ipairs(TabList) do
-            t.Page.Visible = false
-            Services.Tween:Create(t.Btn, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-                TextColor3 = C_MUTED,
-                BackgroundTransparency = 1
-            }):Play()
-            if t.Notch then
-                Services.Tween:Create(t.Notch, TweenInfo.new(0.18), {BackgroundTransparency = 1}):Play()
-            end
-        end
-
-        page.Position = UDim2.new(0, 0, 0, 8)
-        page.Visible = true
-        Services.Tween:Create(page, TweenInfo.new(0.22, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-            Position = UDim2.new(0, 0, 0, 0)
-        }):Play()
-
-        Services.Tween:Create(btn, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-            TextColor3 = C_RED,
-            BackgroundTransparency = 0.82,
-            BackgroundColor3 = C_RED
-        }):Play()
-        Services.Tween:Create(btnNotch, TweenInfo.new(0.18), {BackgroundTransparency = 0}):Play()
-
-        local targetY = 34 + (tabIndex - 1) * 36
-        Services.Tween:Create(TabIndicator, TweenInfo.new(0.24, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
-            Position = UDim2.new(0, 4, 0, targetY)
-        }):Play()
+PlayerLeftBox:AddToggle("FaceCheck", {
+    Text = "360-Degree Parry Protection",
+    Default = not Config.Combat.FaceCheck,
+    Tooltip = "Parries attacks from any angle, even from behind",
+    Callback = function(v)
+        Config.Combat.FaceCheck = not v
     end
+})
 
-    btn.MouseEnter:Connect(function()
-        if not page.Visible then
-            Services.Tween:Create(btn, TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-                BackgroundTransparency = 0.92,
-                BackgroundColor3 = C_CONTAINER_HOVER,
-                TextColor3 = C_WHITE
-            }):Play()
+PlayerLeftBox:AddSlider("ParryDistance", {
+    Text = "Parry Trigger Distance",
+    Default = Config.Combat.ParryDistance,
+    Min = 6,
+    Max = 16,
+    Rounding = 1,
+    Suffix = " studs",
+    Callback = function(v)
+        Config.Combat.ParryDistance = v
+    end
+})
+
+PlayerLeftBox:AddButton({
+    Text = "MANUAL TEST PARRY (RIGHT CLICK)",
+    Func = function()
+        ExecuteAutoParry("MANUAL_TEST")
+    end
+})
+
+local PlayerRightBox = Tabs.Player:AddRightGroupbox("Survivor Movement & Perks")
+PlayerRightBox:AddToggle("PlayerSpeed", {
+    Text = "Player Fast Speed Boost",
+    Default = Config.Player.FastSpeed,
+    Tooltip = "Activates only when toggled on",
+    Callback = function(v)
+        Config.Player.FastSpeed = v
+        if not v and LocalPlayer.Character then
+            local h = LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
+            if h then h.WalkSpeed = 16 end
         end
-    end)
+    end
+})
 
-    btn.MouseLeave:Connect(function()
-        if not page.Visible then
-            Services.Tween:Create(btn, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-                BackgroundTransparency = 1,
-                TextColor3 = C_MUTED
-            }):Play()
-        end
-    end)
+PlayerRightBox:AddSlider("PlayerSpeedVal", {
+    Text = "Player WalkSpeed",
+    Default = Config.Player.SpeedValue,
+    Min = 16,
+    Max = 45,
+    Rounding = 0,
+    Suffix = " studs/s",
+    Callback = function(v)
+        Config.Player.SpeedValue = v
+    end
+})
 
-    btn.MouseButton1Click:Connect(Switch)
-    table.insert(TabList, {Btn = btn, Page = page, Notch = btnNotch, Index = tabIndex})
-    if #TabList == 1 then Switch() end
-    local Widgets = {}
+PlayerRightBox:AddToggle("PlayerAntiStun", {
+    Text = "No Stun / Anti Stun (Player)",
+    Default = Config.Player.AntiStun,
+    Callback = function(v)
+        Config.Player.AntiStun = v
+    end
+})
 
-    -- FULL-ROW TAP-TO-TOGGLE COMPONENT (Red + Black Ultra Smooth Dynamic Toggle)
-    function Widgets:Toggle(title, defaultVal, callback, accentColor)
-        local activeColor = accentColor or C_RED
+PlayerRightBox:AddToggle("EnforcePlayerRole", {
+    Text = "Enforce Player Role Only",
+    Default = Config.Player.OnlyWhenPlayer,
+    Callback = function(v)
+        Config.Player.OnlyWhenPlayer = v
+    end
+})
 
-        local box = Instance.new("Frame", page)
-        box.Size = UDim2.new(1, -6, 0, 44)
-        box.BackgroundColor3 = defaultVal and C_CONTAINER_ACT or C_CONTAINER
-        box.BorderSizePixel = 0
-        Instance.new("UICorner", box).CornerRadius = UDim.new(0, 7)
-
-        -- Left Active Indicator Pill with dynamic height
-        local activeBar = Instance.new("Frame", box)
-        activeBar.Size = defaultVal and UDim2.new(0, 3, 0, 24) or UDim2.new(0, 3, 0, 16)
-        activeBar.Position = defaultVal and UDim2.new(0, 0, 0.5, -12) or UDim2.new(0, 0, 0.5, -8)
-        activeBar.BackgroundColor3 = defaultVal and activeColor or C_BORDER_DIM
-        activeBar.BorderSizePixel = 0
-        Instance.new("UICorner", activeBar).CornerRadius = UDim.new(1, 0)
-
-        local label = Instance.new("TextLabel", box)
-        label.Text = title
-        label.Size = UDim2.new(1, -90, 0, 18)
-        label.Position = UDim2.new(0, 16, 0, 6)
-        label.BackgroundTransparency = 1
-        label.TextColor3 = C_WHITE
-        label.Font = Enum.Font.GothamMedium
-        label.TextSize = 11
-        label.TextXAlignment = Enum.TextXAlignment.Left
-
-        local statusLabel = Instance.new("TextLabel", box)
-        statusLabel.Text = defaultVal and "ACTIVE" or "DISABLED"
-        statusLabel.Size = UDim2.new(1, -90, 0, 14)
-        statusLabel.Position = UDim2.new(0, 16, 0, 24)
-        statusLabel.BackgroundTransparency = 1
-        statusLabel.TextColor3 = defaultVal and (accentColor or C_RED_GLOW) or C_MUTED
-        statusLabel.Font = Enum.Font.GothamBold
-        statusLabel.TextSize = 8
-        statusLabel.TextXAlignment = Enum.TextXAlignment.Left
-
-        local switch = Instance.new("Frame", box)
-        switch.Size = UDim2.new(0, 42, 0, 22)
-        switch.Position = UDim2.new(1, -54, 0.5, -11)
-        switch.BackgroundColor3 = defaultVal and activeColor or Color3.fromRGB(32, 18, 24)
-        switch.BorderSizePixel = 0
-        Instance.new("UICorner", switch).CornerRadius = UDim.new(1, 0)
-
-        local dot = Instance.new("Frame", switch)
-        dot.Size = UDim2.new(0, 16, 0, 16)
-        dot.Position = defaultVal and UDim2.new(1, -19, 0.5, -8) or UDim2.new(0, 3, 0.5, -8)
-        dot.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-        dot.BorderSizePixel = 0
-        Instance.new("UICorner", dot).CornerRadius = UDim.new(1, 0)
-
-        local state = defaultVal
-        local function SetState(val)
-            state = val
-            local col = state and activeColor or Color3.fromRGB(32, 18, 24)
-            local pos = state and UDim2.new(1, -19, 0.5, -8) or UDim2.new(0, 3, 0.5, -8)
-            local barCol = state and activeColor or C_BORDER_DIM
-            local barSize = state and UDim2.new(0, 3, 0, 24) or UDim2.new(0, 3, 0, 16)
-            local barPos = state and UDim2.new(0, 0, 0.5, -12) or UDim2.new(0, 0, 0.5, -8)
-            local boxCol = state and C_CONTAINER_ACT or C_CONTAINER
-            
-            statusLabel.Text = state and "ACTIVE" or "DISABLED"
-            statusLabel.TextColor3 = state and (accentColor or C_RED_GLOW) or C_MUTED
-
-            Services.Tween:Create(switch, TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {BackgroundColor3 = col}):Play()
-            Services.Tween:Create(dot, TweenInfo.new(0.24, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Position = pos}):Play()
-            Services.Tween:Create(activeBar, TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-                BackgroundColor3 = barCol,
-                Size = barSize,
-                Position = barPos
-            }):Play()
-            Services.Tween:Create(box, TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {BackgroundColor3 = boxCol}):Play()
-            callback(state)
-        end
-
-        -- Invisible full-card tap button with tactile feedback
-        local tapOverlay = Instance.new("TextButton", box)
-        tapOverlay.Name = "TapHitbox"
-        tapOverlay.Size = UDim2.new(1, 0, 1, 0)
-        tapOverlay.BackgroundTransparency = 1
-        tapOverlay.Text = ""
-        tapOverlay.ZIndex = 5
-
-        tapOverlay.MouseButton1Click:Connect(function()
-            Services.Tween:Create(box, TweenInfo.new(0.06), {Size = UDim2.new(1, -10, 0, 42)}):Play()
-            task.wait(0.06)
-            Services.Tween:Create(box, TweenInfo.new(0.1, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Size = UDim2.new(1, -6, 0, 44)}):Play()
-            SetState(not state)
-        end)
-
-        tapOverlay.MouseEnter:Connect(function()
-            if not state then
-                Services.Tween:Create(box, TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {BackgroundColor3 = C_CONTAINER_HOVER}):Play()
+PlayerRightBox:AddButton({
+    Text = "INSTANT RECOVER / CLEAR STUN",
+    Func = function()
+        pcall(function()
+            local c = LocalPlayer.Character
+            local h = c and c:FindFirstChildOfClass("Humanoid")
+            if h then
+                h.PlatformStand = false
+                h.Sit = false
+                h:ChangeState(Enum.HumanoidStateType.Running)
             end
         end)
-        tapOverlay.MouseLeave:Connect(function()
-            local target = state and C_CONTAINER_ACT or C_CONTAINER
-            Services.Tween:Create(box, TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {BackgroundColor3 = target}):Play()
-        end)
-
-        return SetState
     end
+})
 
-    -- Luxury Slider Component
-    function Widgets:Slider(title, min, max, defaultVal, suffix, isFloat, callback)
-        local box = Instance.new("Frame", page)
-        box.Size = UDim2.new(1, -6, 0, 56)
-        box.BackgroundColor3 = C_CONTAINER
-        box.BorderSizePixel = 0
-        Instance.new("UICorner", box).CornerRadius = UDim.new(0, 7)
+-- ====================================================================
+-- TAB 2: KILLER
+-- ====================================================================
+local KillerLeftBox = Tabs.Killer:AddLeftGroupbox("Killer Combat & Immunity")
+CardKillerRole = CreateObsidianCard(KillerLeftBox, "Killer Status", "CHECKING ROLE...")
 
-        local label = Instance.new("TextLabel", box)
-        label.Text = title
-        label.Size = UDim2.new(0.7, 0, 0, 20)
-        label.Position = UDim2.new(0, 16, 0, 8)
-        label.BackgroundTransparency = 1
-        label.TextColor3 = C_WHITE
-        label.Font = Enum.Font.GothamMedium
-        label.TextSize = 11
-        label.TextXAlignment = Enum.TextXAlignment.Left
-
-        -- Sleek Value Badge Box in Deep Obsidian
-        local badge = Instance.new("Frame", box)
-        badge.Size = UDim2.new(0, 68, 0, 18)
-        badge.Position = UDim2.new(1, -80, 0, 8)
-        badge.BackgroundColor3 = C_BLACK
-        badge.BorderSizePixel = 0
-        Instance.new("UICorner", badge).CornerRadius = UDim.new(0, 4)
-
-        local num = Instance.new("TextLabel", badge)
-        num.Text = tostring(defaultVal) .. (suffix or "")
-        num.Size = UDim2.new(1, 0, 1, 0)
-        num.BackgroundTransparency = 1
-        num.TextColor3 = C_RED_GLOW
-        num.Font = Enum.Font.GothamBold
-        num.TextSize = 10
-        num.TextXAlignment = Enum.TextXAlignment.Center
-
-        local track = Instance.new("Frame", box)
-        track.Size = UDim2.new(1, -32, 0, 5)
-        track.Position = UDim2.new(0, 16, 0, 38)
-        track.BackgroundColor3 = Color3.fromRGB(16, 12, 18)
-        track.BorderSizePixel = 0
-        Instance.new("UICorner", track).CornerRadius = UDim.new(1, 0)
-
-        local fill = Instance.new("Frame", track)
-        local initScale = math.clamp((defaultVal - min) / (max - min), 0, 1)
-        fill.Size = UDim2.new(initScale, 0, 1, 0)
-        fill.BackgroundColor3 = C_RED
-        fill.BorderSizePixel = 0
-        Instance.new("UICorner", fill).CornerRadius = UDim.new(1, 0)
-
-        local fillGrad = Instance.new("UIGradient", fill)
-        fillGrad.Color = ColorSequence.new({
-            ColorSequenceKeypoint.new(0, C_RED_DARK),
-            ColorSequenceKeypoint.new(1, C_RED)
-        })
-
-        local knob = Instance.new("Frame", track)
-        knob.Size = UDim2.new(0, 13, 0, 13)
-        knob.Position = UDim2.new(initScale, -6, 0.5, -6)
-        knob.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-        knob.BorderSizePixel = 0
-        Instance.new("UICorner", knob).CornerRadius = UDim.new(1, 0)
-
-        local knobCenter = Instance.new("Frame", knob)
-        knobCenter.Size = UDim2.new(0, 5, 0, 5)
-        knobCenter.Position = UDim2.new(0.5, -2, 0.5, -2)
-        knobCenter.BackgroundColor3 = C_RED
-        knobCenter.BorderSizePixel = 0
-        Instance.new("UICorner", knobCenter).CornerRadius = UDim.new(1, 0)
-
-        local active = false
-        local function Apply(input)
-            local p = math.clamp((input.Position.X - track.AbsolutePosition.X) / track.AbsoluteSize.X, 0, 1)
-            local raw = min + (max - min) * p
-            local val = isFloat and (math.floor(raw * 2) / 2) or math.floor(raw)
-            Services.Tween:Create(fill, TweenInfo.new(0.06), {Size = UDim2.new(p, 0, 1, 0)}):Play()
-            Services.Tween:Create(knob, TweenInfo.new(0.06), {Position = UDim2.new(p, -6, 0.5, -6)}):Play()
-            num.Text = tostring(val) .. (suffix or "")
-            callback(val)
-        end
-
-        track.InputBegan:Connect(function(input)
-            if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-                active = true
-                Apply(input)
-            end
-        end)
-        Services.Input.InputEnded:Connect(function(input)
-            if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-                active = false
-            end
-        end)
-        Services.Input.InputChanged:Connect(function(input)
-            if active and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
-                Apply(input)
-            end
-        end)
-
-        box.MouseEnter:Connect(function()
-            Services.Tween:Create(box, TweenInfo.new(0.15), {BackgroundColor3 = C_CONTAINER_HOVER}):Play()
-        end)
-        box.MouseLeave:Connect(function()
-            Services.Tween:Create(box, TweenInfo.new(0.15), {BackgroundColor3 = C_CONTAINER}):Play()
-        end)
+KillerLeftBox:AddToggle("KillerAntiStun", {
+    Text = "Anti Stun (Pallet & Blind Immune)",
+    Default = Config.Killer.AntiStun,
+    Tooltip = "Completely nullifies pallet stuns and flashlight blinds",
+    Callback = function(v)
+        Config.Killer.AntiStun = v
     end
+})
 
-    -- Luxury Metric / Intel Card Component
-    function Widgets:Card(label, val, accentColor)
-        local card = Instance.new("Frame", page)
-        card.Size = UDim2.new(1, -6, 0, 48)
-        card.BackgroundColor3 = C_CONTAINER
-        card.BorderSizePixel = 0
-        Instance.new("UICorner", card).CornerRadius = UDim.new(0, 7)
-
-        local leftBar = Instance.new("Frame", card)
-        leftBar.Size = UDim2.new(0, 3, 0, 24)
-        leftBar.Position = UDim2.new(0, 0, 0.5, -12)
-        leftBar.BackgroundColor3 = accentColor or C_CYAN
-        leftBar.BorderSizePixel = 0
-        Instance.new("UICorner", leftBar).CornerRadius = UDim.new(1, 0)
-
-        local tit = Instance.new("TextLabel", card)
-        tit.Text = label:upper()
-        tit.Size = UDim2.new(1, -24, 0, 14)
-        tit.Position = UDim2.new(0, 16, 0, 8)
-        tit.BackgroundTransparency = 1
-        tit.TextColor3 = C_MUTED
-        tit.Font = Enum.Font.GothamBold
-        tit.TextSize = 9
-        tit.TextXAlignment = Enum.TextXAlignment.Left
-
-        local data = Instance.new("TextLabel", card)
-        data.Text = val
-        data.Size = UDim2.new(1, -24, 0, 18)
-        data.Position = UDim2.new(0, 16, 0, 24)
-        data.BackgroundTransparency = 1
-        data.TextColor3 = C_WHITE
-        data.Font = Enum.Font.GothamBold
-        data.TextSize = 11
-        data.TextXAlignment = Enum.TextXAlignment.Left
-        data.RichText = true
-
-        return function(txt) data.Text = txt end
-    end
-
-    -- Luxury Action Button Component (Red + Black Theme with Left Ruby Accent)
-    function Widgets:Button(title, isDestructive, callback)
-        local b = Instance.new("TextButton", page)
-        b.Size = UDim2.new(1, -6, 0, 36)
-        b.BackgroundColor3 = isDestructive and Color3.fromRGB(38, 14, 20) or C_CONTAINER
-        b.Text = title
-        b.TextColor3 = isDestructive and Color3.fromRGB(255, 65, 80) or C_WHITE
-        b.Font = Enum.Font.GothamBold
-        b.TextSize = 11
-        b.BorderSizePixel = 0
-        Instance.new("UICorner", b).CornerRadius = UDim.new(0, 7)
-
-        local bar = Instance.new("Frame", b)
-        bar.Size = UDim2.new(0, 3, 0.6, 0)
-        bar.Position = UDim2.new(0, 0, 0.2, 0)
-        bar.BackgroundColor3 = isDestructive and Color3.fromRGB(255, 50, 70) or C_RED_DARK
-        bar.BorderSizePixel = 0
-        Instance.new("UICorner", bar).CornerRadius = UDim.new(1, 0)
-
-        b.MouseEnter:Connect(function()
-            Services.Tween:Create(b, TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-                BackgroundColor3 = isDestructive and Color3.fromRGB(60, 18, 28) or C_CONTAINER_HOVER,
-                TextColor3 = isDestructive and Color3.fromRGB(255, 100, 115) or C_RED_GLOW
-            }):Play()
-        end)
-
-        b.MouseLeave:Connect(function()
-            Services.Tween:Create(b, TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-                BackgroundColor3 = isDestructive and Color3.fromRGB(38, 14, 20) or C_CONTAINER,
-                TextColor3 = isDestructive and Color3.fromRGB(255, 65, 80) or C_WHITE
-            }):Play()
-        end)
-
-        b.MouseButton1Click:Connect(function()
-            Services.Tween:Create(b, TweenInfo.new(0.08, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Size = UDim2.new(1, -12, 0, 34)}):Play()
-            task.wait(0.08)
-            Services.Tween:Create(b, TweenInfo.new(0.1, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Size = UDim2.new(1, -6, 0, 36)}):Play()
-            callback()
-        end)
-    end
-
-    return Widgets
-end
-
-local PagePlayer   = Builder:Tab("PLAYER ONLY", "SURVIVOR PROTOCOLS // PARRY, SPEED & NO STUN")
-local PageKiller   = Builder:Tab("KILLER ONLY", "EXCLUSIVE PROTOCOLS // ANTI STUN & FAST SPEED")
-local PageCombat   = Builder:Tab("COMBAT", "AUTOMATED DEFENSE & PARRY TIMING")
-local PageAuto     = Builder:Tab("AUTOMATION", "SMART GREAT ENGINE // ZERO CONFIGURATION")
-local PageESP      = Builder:Tab("VISUALS", "ESP SYSTEM // TAP TO ON OR OFF")
-local PageThreat   = Builder:Tab("RADAR", "THREAT PROXIMITY & LINE-OF-SIGHT SENSORS")
-local PageWorld    = Builder:Tab("WORLD", "ENVIRONMENTAL LIGHTING & FOV CONTROL")
-local PageIntel    = Builder:Tab("INTEL", "LIVE MATCH TELEMETRY & ACTIVE KILLER STATS")
-local PageSettings = Builder:Tab("SETTINGS", "CACHE MANAGEMENT & ENGINE CONTROLS")
-
--- Player Protocols: PLAYER ONLY (Auto Parry Killer, Speed Adjust & No Stun)
-CardPlayerRole = PagePlayer:Card("Player Role Detection", "CHECKING ROLE...", C_CYAN)
-
--- Combat: Auto Parry Killer (Strictly Player parry from Killer hit)
-PagePlayer:Toggle("Auto Parry Killer Attacks", Config.Combat.AutoParry, function(v)
-    Config.Combat.AutoParry = v
-    Config.Player.AutoParry = v
-end, Config.Palette.VicePink)
-
-PagePlayer:Toggle("360-Degree Parry Protection", not Config.Combat.FaceCheck, function(v)
-    Config.Combat.FaceCheck = not v
-end)
-
-PagePlayer:Slider("Parry Trigger Distance", 6, 16, Config.Combat.ParryDistance, " STUDS", false, function(v)
-    Config.Combat.ParryDistance = v
-end)
-
-PagePlayer:Button("MANUAL TEST PARRY (RIGHT CLICK)", false, function()
-    ExecuteAutoParry("MANUAL_TEST")
-end)
-
--- Player Speed Adjust (Instant Responsive Tap)
-PagePlayer:Toggle("Player Fast Speed Boost", Config.Player.FastSpeed, function(v)
-    Config.Player.FastSpeed = v
-    if LocalPlayer.Character then
-        local human = LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
-        if human then
-            if v and ShouldApplyPlayerMods() then
-                human.WalkSpeed = Config.Player.SpeedValue
-            else
-                human.WalkSpeed = 16
-            end
+KillerLeftBox:AddToggle("KillerSpeed", {
+    Text = "Killer Fast Speed Boost",
+    Default = Config.Killer.FastSpeed,
+    Tooltip = "Accelerates movement speed while playing as Killer",
+    Callback = function(v)
+        Config.Killer.FastSpeed = v
+        if not v and LocalPlayer.Character then
+            local h = LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
+            if h then h.WalkSpeed = 16 end
         end
     end
-end, C_CYAN)
+})
 
-PagePlayer:Slider("Player WalkSpeed", 16, 45, Config.Player.SpeedValue, " STUDS/S", false, function(v)
-    Config.Player.SpeedValue = v
-    if Config.Player.FastSpeed and ShouldApplyPlayerMods() and LocalPlayer.Character then
-        local human = LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
-        if human then human.WalkSpeed = v end
+KillerLeftBox:AddSlider("KillerSpeedVal", {
+    Text = "Killer Fast Speed",
+    Default = Config.Killer.SpeedValue,
+    Min = 18,
+    Max = 55,
+    Rounding = 0,
+    Suffix = " studs/s",
+    Callback = function(v)
+        Config.Killer.SpeedValue = v
     end
-end)
+})
 
--- Player No Stun
-PagePlayer:Toggle("No Stun / Anti Stun (Player)", Config.Player.AntiStun, function(v)
-    Config.Player.AntiStun = v
-    if v and LocalPlayer.Character then
-        CleanPlayerStunEffects(LocalPlayer.Character)
+KillerLeftBox:AddToggle("EnforceKillerRole", {
+    Text = "Enforce Killer Role Only",
+    Default = Config.Killer.OnlyWhenKiller,
+    Callback = function(v)
+        Config.Killer.OnlyWhenKiller = v
     end
-end, C_CYAN)
+})
 
-PagePlayer:Button("INSTANT RECOVER / CLEAR STUN", false, function()
-    if LocalPlayer.Character then
-        CleanPlayerStunEffects(LocalPlayer.Character)
-    end
-end)
-
-PagePlayer:Toggle("Enforce Player Role Only", Config.Player.OnlyWhenPlayer, function(v)
-    Config.Player.OnlyWhenPlayer = v
-    if LocalPlayer.Character then
-        local human = LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
-        if human then
-            if Config.Player.FastSpeed and ShouldApplyPlayerMods() then
-                human.WalkSpeed = Config.Player.SpeedValue
-            else
-                human.WalkSpeed = 16
+KillerLeftBox:AddButton({
+    Text = "INSTANT RECOVER / CLEAR ALL STUNS",
+    Func = function()
+        pcall(function()
+            local c = LocalPlayer.Character
+            local h = c and c:FindFirstChildOfClass("Humanoid")
+            if h then
+                h.PlatformStand = false
+                h.Sit = false
+                h:ChangeState(Enum.HumanoidStateType.Running)
             end
+        end)
+    end
+})
+
+-- ====================================================================
+-- TAB 3: AUTOMATION
+-- ====================================================================
+local AutoLeftBox = Tabs.Automation:AddLeftGroupbox("Generator Skill Check Engine")
+AutoLeftBox:AddToggle("AutoGreatCheck", {
+    Text = "Auto Fix Gen (Perfect Great)",
+    Default = Config.Automation.AutoGreatCheck,
+    Tooltip = "Instantly hits Great skill checks with zero delay",
+    Callback = function(v)
+        Config.Automation.AutoGreatCheck = v
+    end
+})
+
+AutoLeftBox:AddToggle("SmartGreat", {
+    Text = "Smart Zero-Adjust Engine",
+    Default = Config.Automation.SmartGreat,
+    Tooltip = "Automatically calibrates to game updates",
+    Callback = function(v)
+        Config.Automation.SmartGreat = v
+    end
+})
+
+AutoLeftBox:AddToggle("AutoRepair", {
+    Text = "Auto Generator Repair Assist",
+    Default = Config.Automation.AutoRepair,
+    Tooltip = "Automatically interacts with nearby uncompleted generators",
+    Callback = function(v)
+        Config.Automation.AutoRepair = v
+    end
+})
+
+AutoLeftBox:AddSlider("ClickDelay", {
+    Text = "Click Delay Compensation",
+    Default = 0,
+    Min = 0,
+    Max = 100,
+    Rounding = 0,
+    Suffix = " ms",
+    Callback = function(ms)
+        Config.Automation.ClickDelay = ms / 1000
+    end
+})
+
+AutoLeftBox:AddSlider("HitAngleStart", {
+    Text = "Great Hit Angle Start",
+    Default = Config.Automation.HitAngleStart,
+    Min = 95,
+    Max = 115,
+    Rounding = 0,
+    Suffix = " deg",
+    Callback = function(v)
+        Config.Automation.HitAngleStart = v
+    end
+})
+
+AutoLeftBox:AddSlider("HitAngleEnd", {
+    Text = "Great Hit Angle End",
+    Default = Config.Automation.HitAngleEnd,
+    Min = 108,
+    Max = 128,
+    Rounding = 0,
+    Suffix = " deg",
+    Callback = function(v)
+        Config.Automation.HitAngleEnd = v
+    end
+})
+
+-- ====================================================================
+-- TAB 4: VISUALS
+-- ====================================================================
+local VisualsLeftBox = Tabs.Visuals:AddLeftGroupbox("ESP Entities (Visuals)")
+VisualsLeftBox:AddToggle("MasterESP", {
+    Text = "Master Visuals",
+    Default = Config.Visuals.MasterESP,
+    Tooltip = "Global master switch for all ESP components",
+    Callback = function(v)
+        Config.Visuals.MasterESP = v
+        if not v then
+            for _, b in pairs(State.Billboards) do if b then b:Destroy() end end
+            table.clear(State.Billboards)
+            for _, hl in pairs(State.Highlights) do if hl then hl:Destroy() end end
+            table.clear(State.Highlights)
+            if State.Boxes then
+                for _, sb in pairs(State.Boxes) do if sb then sb:Destroy() end end
+                table.clear(State.Boxes)
+            end
+        else
+            ProcessEntities()
+            ProcessWorldESP()
         end
     end
-end)
+})
 
--- Combat Protocols
-PageCombat:Toggle("Auto Parry Killer Attacks", Config.Combat.AutoParry, function(v)
-    Config.Combat.AutoParry = v
-    Config.Player.AutoParry = v
-end, Config.Palette.VicePink)
-PageCombat:Toggle("Facing Angle Verification", Config.Combat.FaceCheck, function(v) Config.Combat.FaceCheck = v end)
-PageCombat:Slider("Parry Trigger Distance", 6, 16, Config.Combat.ParryDistance, " STUDS", false, function(v) Config.Combat.ParryDistance = v end)
-PageCombat:Button("MANUAL TEST PARRY (RIGHT CLICK)", false, function()
-    ExecuteAutoParry("MANUAL_TEST")
-end)
-
--- Killer Protocols: KILLER ONLY (Anti Stun & Fast Speed)
-CardKillerRole = PageKiller:Card("Killer Role Detection", "CHECKING ROLE...", C_PINK)
-
-PageKiller:Toggle("Anti Stun (Pallet & Blind Immune)", Config.Killer.AntiStun, function(v)
-    Config.Killer.AntiStun = v
-    if v and LocalPlayer.Character then
-        CleanStunEffects(LocalPlayer.Character)
-    end
-end, Config.Palette.VicePink)
-
-PageKiller:Toggle("Fast Speed Boost", Config.Killer.FastSpeed, function(v)
-    Config.Killer.FastSpeed = v
-    if not v and LocalPlayer.Character then
-        local human = LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
-        if human then human.WalkSpeed = 16 end
-    end
-end, Config.Palette.ViceCyan)
-
-PageKiller:Slider("Killer Fast Speed", 18, 55, Config.Killer.SpeedValue, " STUDS/S", false, function(v)
-    Config.Killer.SpeedValue = v
-    if Config.Killer.FastSpeed and ShouldApplyKillerMods() and LocalPlayer.Character then
-        local human = LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
-        if human then human.WalkSpeed = v end
-    end
-end)
-
-PageKiller:Toggle("Enforce Killer Role Only", Config.Killer.OnlyWhenKiller, function(v)
-    Config.Killer.OnlyWhenKiller = v
-    if v and not IsLocalPlayerKiller() and LocalPlayer.Character then
-        local human = LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
-        if human then human.WalkSpeed = 16 end
-    end
-end)
-
-PageKiller:Button("INSTANT RECOVER / CLEAR ALL STUNS", false, function()
-    if LocalPlayer.Character then
-        CleanStunEffects(LocalPlayer.Character)
-    end
-end)
-
--- Automation Protocols: PERFECT FIX GEN (Zero adjustment needed, instant auto tap)
-PageAuto:Toggle("Auto Fix Gen (Perfect Great)", Config.Automation.AutoGreatCheck, function(v)
-    Config.Automation.AutoGreatCheck = v
-end)
-PageAuto:Toggle("Smart Zero-Adjust Engine", Config.Automation.SmartGreat, function(v)
-    Config.Automation.SmartGreat = v
-end)
-PageAuto:Toggle("Auto Generator Repair Assist", Config.Automation.AutoRepair, function(v)
-    Config.Automation.AutoRepair = v
-end)
-
--- Manual Fine-Tuning Sliders (Optional override when Smart Zero-Adjust is disabled)
-PageAuto:Slider("Click Delay Compensation", 0, 100, 0, " MS", true, function(ms)
-    Config.Automation.ClickDelay = ms / 1000
-end)
-PageAuto:Slider("Great Hit Angle Start", 95, 115, Config.Automation.HitAngleStart, " DEG", false, function(v)
-    Config.Automation.HitAngleStart = v
-end)
-PageAuto:Slider("Great Hit Angle End", 108, 128, Config.Automation.HitAngleEnd, " DEG", false, function(v)
-    Config.Automation.HitAngleEnd = v
-end)
-
--- Visuals Protocols: TAP-TO-TOGGLE FOR KILLER, PLAYER, GENERATOR, AND GATE ONLY
-PageESP:Toggle("ESP Killer", Config.Visuals.KillerESP, function(v)
-    Config.Visuals.KillerESP = v
-    if not v then
-        if State.ActiveKiller and State.ActiveKiller.Character then
-            local tag = State.ActiveKiller.Character:FindFirstChild("ESP_Tag", true)
-            if tag then tag:Destroy() end
-            RemoveHighlight(State.ActiveKiller.Character)
-        end
-        for _, p in ipairs(Services.Players:GetPlayers()) do
-            if (p == State.ActiveKiller or IsTargetKiller(p)) and p.Character then
-                local tag = p.Character:FindFirstChild("ESP_Tag", true)
+VisualsLeftBox:AddToggle("KillerESP", {
+    Text = "ESP Killer (Red Chams)",
+    Default = Config.Visuals.KillerESP,
+    Tooltip = "Highlights the single active Killer in pure vibrant Red",
+    Callback = function(v)
+        Config.Visuals.KillerESP = v
+        if not v then
+            if State.ActiveKiller and State.ActiveKiller.Character then
+                local tag = State.ActiveKiller.Character:FindFirstChild("ESP_Tag", true)
                 if tag then tag:Destroy() end
-                RemoveHighlight(p.Character)
+                RemoveHighlight(State.ActiveKiller.Character)
             end
+        else
+            ProcessEntities()
         end
-    else
-        ProcessEntities()
     end
-end, Config.Palette.Killer)
+})
 
-PageESP:Toggle("ESP Player", Config.Visuals.SurvivorESP, function(v)
-    Config.Visuals.SurvivorESP = v
-    if not v then
-        for _, p in ipairs(Services.Players:GetPlayers()) do
-            if p ~= LocalPlayer and p ~= State.ActiveKiller and not IsTargetKiller(p) and p.Character then
-                local tag = p.Character:FindFirstChild("ESP_Tag", true)
+VisualsLeftBox:AddToggle("SurvivorESP", {
+    Text = "ESP Player (Cyan Chams)",
+    Default = Config.Visuals.SurvivorESP,
+    Tooltip = "Highlights all fellow Players/Survivors in pure vibrant Cyan",
+    Callback = function(v)
+        Config.Visuals.SurvivorESP = v
+        if not v then
+            for _, p in ipairs(Services.Players:GetPlayers()) do
+                if p ~= LocalPlayer and p ~= State.ActiveKiller and p.Character then
+                    local tag = p.Character:FindFirstChild("ESP_Tag", true)
+                    if tag then tag:Destroy() end
+                    RemoveHighlight(p.Character)
+                end
+            end
+        else
+            ProcessEntities()
+        end
+    end
+})
+
+VisualsLeftBox:AddToggle("GeneratorESP", {
+    Text = "ESP Generator (Highlight Only)",
+    Default = Config.Visuals.GeneratorESP,
+    Tooltip = "3D glowing chams for all generators (zero name tags)",
+    Callback = function(v)
+        Config.Visuals.GeneratorESP = v
+        if not v then
+            for _, gen in ipairs(State.Generators) do
+                local tag = gen:FindFirstChild("ESP_Tag", true)
                 if tag then tag:Destroy() end
-                RemoveHighlight(p.Character)
+                RemoveHighlight(gen)
             end
+        else
+            ProcessWorldESP()
         end
-    else
-        ProcessEntities()
     end
-end, Config.Palette.Survivor)
+})
 
-PageESP:Toggle("ESP Generator (Highlight Only)", Config.Visuals.GeneratorESP, function(v)
-    Config.Visuals.GeneratorESP = v
-    if not v then
-        for _, gen in ipairs(State.Generators) do
-            local tag = gen:FindFirstChild("ESP_Tag", true)
-            if tag then tag:Destroy() end
-            RemoveHighlight(gen)
-            local a = State.AnchorCache[gen]
-            if a then RemoveHighlight(a) end
+VisualsLeftBox:AddToggle("GateESP", {
+    Text = "ESP Exit Gate (Highlight Only)",
+    Default = Config.Visuals.GateESP,
+    Tooltip = "3D glowing chams for all exit gates (zero name tags)",
+    Callback = function(v)
+        Config.Visuals.GateESP = v
+        if not v then
+            for _, gate in ipairs(State.WorldObjects.Gates) do
+                local tag = gate:FindFirstChild("ESP_Tag", true)
+                if tag then tag:Destroy() end
+                RemoveHighlight(gate)
+            end
+        else
+            ProcessWorldESP()
         end
-    else
-        IndexWorldObjects()
-        ProcessWorldESP()
     end
-end, Config.Palette.Generator)
+})
 
-PageESP:Toggle("ESP Gate (Highlight Only)", Config.Visuals.GateESP, function(v)
-    Config.Visuals.GateESP = v
-    if not v then
-        for _, g in ipairs(State.WorldObjects.Gates) do
-            local tag = g:FindFirstChild("ESP_Tag", true)
-            if tag then tag:Destroy() end
-            RemoveHighlight(g)
-            local a = State.AnchorCache[g]
-            if a then RemoveHighlight(a) end
+VisualsLeftBox:AddToggle("ShowDistance", {
+    Text = "Display Player Distance",
+    Default = Config.Visuals.ShowDistance,
+    Callback = function(v)
+        Config.Visuals.ShowDistance = v
+    end
+})
+
+local VisualsRightBox = Tabs.Visuals:AddRightGroupbox("Environment & Lighting")
+VisualsRightBox:AddToggle("Fullbright", {
+    Text = "Fullbright Ambient Max",
+    Default = Config.Environment.Fullbright,
+    Tooltip = "Maximum ambient visibility across all maps",
+    Callback = function(v)
+        Config.Environment.Fullbright = v
+        if not v then
+            pcall(function()
+                Services.Lighting.Ambient = State.LightingDefaults.Ambient
+                Services.Lighting.OutdoorAmbient = State.LightingDefaults.OutdoorAmbient
+                Services.Lighting.Brightness = State.LightingDefaults.Brightness
+                Services.Lighting.ClockTime = State.LightingDefaults.ClockTime
+            end)
         end
-    else
-        IndexWorldObjects()
-        ProcessWorldESP()
     end
-end, Config.Palette.Gate)
+})
 
-PageESP:Toggle("Master Visuals", Config.Visuals.MasterESP, function(v)
-    Config.Visuals.MasterESP = v
-    if not v then
-        for _, tag in ipairs(State.Billboards) do if tag then tag:Destroy() end end
+VisualsRightBox:AddToggle("RemoveFog", {
+    Text = "Remove Atmospheric Fog",
+    Default = Config.Environment.RemoveFog,
+    Tooltip = "Clears dark fog and shadow occlusion",
+    Callback = function(v)
+        Config.Environment.RemoveFog = v
+        if not v then
+            pcall(function()
+                Services.Lighting.FogEnd = State.LightingDefaults.FogEnd
+                Services.Lighting.GlobalShadows = State.LightingDefaults.GlobalShadows
+            end)
+        end
+    end
+})
+
+VisualsRightBox:AddSlider("FOV", {
+    Text = "Camera Field of View",
+    Default = Config.Environment.FieldOfView,
+    Min = 70,
+    Max = 120,
+    Rounding = 0,
+    Suffix = " fov",
+    Callback = function(v)
+        Config.Environment.FieldOfView = v
+        Camera.FieldOfView = v
+    end
+})
+
+-- ====================================================================
+-- TAB 5: RADAR & INTEL
+-- ====================================================================
+local IntelLeftBox = Tabs.Radar:AddLeftGroupbox("Live Match Intel")
+CardRealKiller   = CreateObsidianCard(IntelLeftBox, "Active Match Killer", "SEARCHING FOR TARGET...")
+CardKillerStatus = CreateObsidianCard(IntelLeftBox, "Killer Tactical Status", "ANALYZING TELEMETRY...")
+CardMask         = CreateObsidianCard(IntelLeftBox, "Hotline Mask Loadout", "NONE")
+CardGensLeft     = CreateObsidianCard(IntelLeftBox, "Generator Objective Progress", "0 / 5 COMPLETE")
+
+local RadarRightBox = Tabs.Radar:AddRightGroupbox("Tactical Threat Radar")
+RadarRightBox:AddToggle("RadarEnabled", {
+    Text = "Proximity Danger Sensor",
+    Default = Config.Radar.Enabled,
+    Callback = function(v)
+        Config.Radar.Enabled = v
+        if not v and ThreatRadarHUD then ThreatRadarHUD.Visible = false end
+    end
+})
+
+RadarRightBox:AddToggle("RadarLOS", {
+    Text = "Killer Line-Of-Sight Raycasting",
+    Default = Config.Radar.LineOfSight,
+    Callback = function(v)
+        Config.Radar.LineOfSight = v
+    end
+})
+
+RadarRightBox:AddToggle("RadarThreatMeter", {
+    Text = "Screen Threat Meter HUD",
+    Default = Config.Radar.ThreatMeter,
+    Callback = function(v)
+        Config.Radar.ThreatMeter = v
+        if not v and ThreatRadarHUD then ThreatRadarHUD.Visible = false end
+    end
+})
+
+RadarRightBox:AddSlider("RadarRadius", {
+    Text = "Danger Radius",
+    Default = Config.Radar.Radius,
+    Min = 40,
+    Max = 160,
+    Rounding = 0,
+    Suffix = " studs",
+    Callback = function(v)
+        Config.Radar.Radius = v
+    end
+})
+
+-- ====================================================================
+-- TAB 6: SETTINGS
+-- ====================================================================
+local SettingsLeftBox = Tabs.Settings:AddLeftGroupbox("Build Architecture")
+SettingsLeftBox:AddLabel({ Text = "<font color=\"rgb(0,240,255)\"><b>606VD // PRO REALITY SUITE</b></font>" })
+SettingsLeftBox:AddLabel({ Text = "Edition: Obsidian UI Library" })
+SettingsLeftBox:AddLabel({ Text = "Version: 1.12" })
+SettingsLeftBox:AddDivider()
+
+SettingsLeftBox:AddButton({
+    Text = "Force Re-index Map Objects",
+    Func = function()
+        for _, b in pairs(State.Billboards) do if b then b:Destroy() end end
         table.clear(State.Billboards)
-        for obj, hl in pairs(State.Highlights) do if hl then pcall(function() hl:Destroy() end) end end
-        table.clear(State.Highlights)
-        if State.Boxes then
-            for obj, b in pairs(State.Boxes) do if b then pcall(function() b:Destroy() end) end end
-            table.clear(State.Boxes)
-        end
-    else
+        table.clear(State.AnchorCache)
         IndexWorldObjects()
         ProcessWorldESP()
-        ProcessEntities()
+        Library:Notify({ Title = "606VD", Description = "Map objects re-indexed successfully!", Time = 3 })
+    end
+})
+
+SettingsLeftBox:AddButton({
+    Text = "CLOSE & UNLOAD SCRIPT",
+    Func = function()
+        UnloadScript()
+    end
+})
+
+-- Build Obsidian ThemeManager and SaveManager on Settings Tab
+pcall(function()
+    if ThemeManager then
+        ThemeManager:SetLibrary(Library)
+        ThemeManager:SetFolder("606VD")
+        ThemeManager:ApplyToTab(Tabs.Settings)
+    end
+    if SaveManager then
+        SaveManager:SetLibrary(Library)
+        SaveManager:SetFolder("606VD/ViolenceDistrict")
+        SaveManager:BuildConfigSection(Tabs.Settings)
     end
 end)
 
-PageESP:Toggle("Display Player Distance", Config.Visuals.ShowDistance, function(v)
-    Config.Visuals.ShowDistance = v
-    ProcessEntities()
-end)
-
--- Threat Radar Protocols
-PageThreat:Toggle("Proximity Danger Sensor", Config.Radar.Enabled, function(v) Config.Radar.Enabled = v end)
-PageThreat:Toggle("Killer Line-Of-Sight Raycasting", Config.Radar.LineOfSight, function(v) Config.Radar.LineOfSight = v end)
-PageThreat:Toggle("Screen Threat Meter HUD", Config.Radar.ThreatMeter, function(v) Config.Radar.ThreatMeter = v end)
-PageThreat:Slider("Danger Radius", 40, 160, Config.Radar.Radius, " STUDS", false, function(v) Config.Radar.Radius = v end)
-
--- Environmental Protocols
-PageWorld:Toggle("Fullbright Ambient Max", Config.Environment.Fullbright, function(v) Config.Environment.Fullbright = v end)
-PageWorld:Toggle("Remove Atmospheric Fog", Config.Environment.RemoveFog, function(v) Config.Environment.RemoveFog = v end)
-PageWorld:Slider("Camera Field of View", 70, 120, Config.Environment.FieldOfView, "", false, function(v)
-    Config.Environment.FieldOfView = v
-    Camera.FieldOfView = v
-end)
-
--- Reality Intel Cards
-CardRealKiller   = PageIntel:Card("Active Match Killer", "SEARCHING FOR TARGET...", C_PINK)
-CardKillerStatus = PageIntel:Card("Killer Tactical Status", "ANALYZING TELEMETRY...", C_GREEN)
-CardMask         = PageIntel:Card("Hotline Mask Loadout", "NONE", C_PURPLE)
-CardGensLeft     = PageIntel:Card("Generator Objective Progress", "0 / 5 COMPLETE", C_CYAN)
-
--- Settings & Maintenance
-PageSettings:Card("Build Architecture", "VERSION 1.12 // PRO REALITY SUITE", C_CYAN)
-
-PageSettings:Button("Force Re-index Map Objects", false, function()
-    for _, b in pairs(State.Billboards) do if b then b:Destroy() end end
-    table.clear(State.Billboards)
-    table.clear(State.AnchorCache)
-    IndexWorldObjects()
-    ProcessWorldESP()
-end)
-
-PageSettings:Button("CLOSE & UNLOAD SCRIPT", true, UnloadScript)
+Library:Notify({
+    Title = "606VD LOADED",
+    Description = "Obsidian UI Suite initialized. Toggle with RightControl.",
+    Time = 4
+})
 
 --------------------------------------------------------------------------------
 -- RUNTIME ENGINE
