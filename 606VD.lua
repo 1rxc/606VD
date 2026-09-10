@@ -38,15 +38,15 @@ local Config = {
     Player = {
         AutoParry = false, -- Activates only when user taps enable in the menu
         AntiStun = true,  -- No Stun for Player/Survivor
-        FastSpeed = false, -- Player Speed Boost
+        FastSpeed = false, -- Player Speed Boost (OFF by default, works only when tap enable)
         SpeedValue = 22,   -- Normal player speed is 16
         OnlyWhenPlayer = true -- Only applies when playing as player/survivor
     },
     Killer = {
         AntiStun = true,
-        FastSpeed = true,
+        FastSpeed = false, -- Killer Speed Boost (OFF by default, works only when tap enable)
         SpeedValue = 28,
-        OnlyWhenKiller = true -- Only applies when playing as killer (disable to force anywhere)
+        OnlyWhenKiller = true -- Only applies when playing as killer
     },
     Automation = {
         AutoGreatCheck = true,
@@ -1461,14 +1461,10 @@ local function ProcessKillerProtocols()
         end
     end
 
-    -- 2. Fast Speed Protocol
-    if Config.Killer.FastSpeed then
+    -- 2. Fast Speed Protocol (ONLY when enabled and only when killer!)
+    if Config.Killer.FastSpeed and ShouldApplyKillerMods() then
         if human.WalkSpeed ~= Config.Killer.SpeedValue then
             human.WalkSpeed = Config.Killer.SpeedValue
-        end
-        if human.MoveDirection.Magnitude > 0 then
-            local targetVel = human.MoveDirection * Config.Killer.SpeedValue
-            root.AssemblyLinearVelocity = Vector3.new(targetVel.X, root.AssemblyLinearVelocity.Y, targetVel.Z)
         end
     end
 end
@@ -1634,14 +1630,10 @@ local function ProcessPlayerProtocols()
         end
     end
 
-    -- 2. Player Fast Speed Protocol
-    if Config.Player.FastSpeed then
+    -- 2. Player Fast Speed Protocol (ONLY when enabled and only when player!)
+    if Config.Player.FastSpeed and ShouldApplyPlayerMods() then
         if human.WalkSpeed ~= Config.Player.SpeedValue then
             human.WalkSpeed = Config.Player.SpeedValue
-        end
-        if human.MoveDirection.Magnitude > 0 then
-            local targetVel = human.MoveDirection * Config.Player.SpeedValue
-            root.AssemblyLinearVelocity = Vector3.new(targetVel.X, root.AssemblyLinearVelocity.Y, targetVel.Z)
         end
     end
 end
@@ -3070,12 +3062,18 @@ PagePlayer:Button("MANUAL TEST PARRY (RIGHT CLICK)", false, function()
     ExecuteAutoParry("MANUAL_TEST")
 end)
 
--- Player Speed Adjust
+-- Player Speed Adjust (Instant Responsive Tap)
 PagePlayer:Toggle("Player Fast Speed Boost", Config.Player.FastSpeed, function(v)
     Config.Player.FastSpeed = v
-    if not v and LocalPlayer.Character then
+    if LocalPlayer.Character then
         local human = LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
-        if human then human.WalkSpeed = 16 end
+        if human then
+            if v and ShouldApplyPlayerMods() then
+                human.WalkSpeed = Config.Player.SpeedValue
+            else
+                human.WalkSpeed = 16
+            end
+        end
     end
 end, C_CYAN)
 
@@ -3103,9 +3101,15 @@ end)
 
 PagePlayer:Toggle("Enforce Player Role Only", Config.Player.OnlyWhenPlayer, function(v)
     Config.Player.OnlyWhenPlayer = v
-    if v and IsLocalPlayerKiller() and LocalPlayer.Character then
+    if LocalPlayer.Character then
         local human = LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
-        if human then human.WalkSpeed = 16 end
+        if human then
+            if Config.Player.FastSpeed and ShouldApplyPlayerMods() then
+                human.WalkSpeed = Config.Player.SpeedValue
+            else
+                human.WalkSpeed = 16
+            end
+        end
     end
 end)
 
