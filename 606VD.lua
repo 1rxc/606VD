@@ -31,9 +31,9 @@ local Config = {
     },
     Combat = {
         AutoParry = false, -- Activates only when user taps enable in the menu
-        ParryDistance = 12.0, -- True killer melee strike range
+        ParryDistance = 13.0, -- True killer melee strike range
         ParryCooldown = 0.90, -- Perfectly covers the 0.8s counter stance window without spamming
-        FaceCheck = false     -- 360-degree parry protection against surprise attacks
+        FaceCheck = true      -- Verifies killer is aiming attack towards player (hit to me)
     },
     Player = {
         AutoParry = false, -- Activates only when user taps enable in the menu
@@ -189,30 +189,38 @@ local function ResolveAnchorPart(obj)
     local anchor = nil
     if obj:IsA("BasePart") then
         anchor = obj
-    elseif obj:IsA("Model") and obj.PrimaryPart and obj.PrimaryPart:IsA("BasePart") then
-        anchor = obj.PrimaryPart
-    end
-
-    if not anchor then
-        for _, name in ipairs({"HumanoidRootPart", "Root", "Hitbox", "Center", "defaultMaterial", "Engine", "Wood", "Plank", "Part", "MeshPart"}) do
-            for _, child in ipairs(obj:GetChildren()) do
-                if child:IsA("BasePart") and child.Name:lower() == name:lower() then
-                    anchor = child
+    elseif obj:IsA("Model") then
+        if obj.PrimaryPart and obj.PrimaryPart:IsA("BasePart") then
+            anchor = obj.PrimaryPart
+        else
+            for _, name in ipairs({"HumanoidRootPart", "Root", "Hitbox", "Center", "defaultMaterial", "Engine", "Body", "Main", "Base", "Part", "MeshPart"}) do
+                local found = obj:FindFirstChild(name)
+                if found and found:IsA("BasePart") then
+                    anchor = found
                     break
                 end
             end
-            if anchor then break end
+            if not anchor then
+                local maxVol = -1
+                for _, desc in ipairs(obj:GetDescendants()) do
+                    if desc:IsA("BasePart") then
+                        local vol = desc.Size.X * desc.Size.Y * desc.Size.Z
+                        if vol > maxVol then
+                            maxVol = vol
+                            anchor = desc
+                        end
+                    end
+                end
+            end
         end
-    end
-
-    if not anchor then
+    elseif obj:IsA("Folder") then
+        local maxVol = -1
         for _, desc in ipairs(obj:GetDescendants()) do
             if desc:IsA("BasePart") then
-                local p = desc.Parent
-                local pName = p and p.Name:lower() or ""
-                if not pName:find("anim") and not pName:find("keyframe") and not pName:find("pose") and not pName:find("ragdoll") and not pName:find("motor") then
+                local vol = desc.Size.X * desc.Size.Y * desc.Size.Z
+                if vol > maxVol then
+                    maxVol = vol
                     anchor = desc
-                    break
                 end
             end
         end
@@ -449,20 +457,68 @@ local function HasLineOfSight(originPart, targetPart)
 end
 
 local function IsGeneratorModel(obj)
-    if not obj or not obj:IsA("Model") then return false end
+    if not obj then return false end
+    if not (obj:IsA("Model") or obj:IsA("Folder") or obj:IsA("BasePart")) then return false end
     if obj:FindFirstAncestorOfClass("Humanoid") then return false end
     if obj:FindFirstAncestor("RagdollConstraints") or obj.Name:find("Ragdoll") then return false end
 
+    -- Avoid indexing sub-parts if the parent model is already recognized as a generator
+    local parent = obj.Parent
+    if parent and parent ~= Services.Workspace and parent:IsA("Model") then
+        local pName = parent.Name:lower()
+        if pName == "generator" or pName:find("generator") or pName:match("^gen[%A%d_]") or pName:match("^gen_%d+") or pName:match("^gen%d+") then
+            return false
+        end
+    end
+
     local name = obj.Name:lower()
-    if name == "generator" or name:match("^generator%d*") or name:match("^gen_%d+") or name:match("^gen%d+") then
+    local pName = parent and parent.Name:lower() or ""
+
+    -- 1. Direct Name Heuristics
+    if name == "gen" or name == "generator" or name:find("generator") 
+        or name:match("^gen[%A%d_]") or name:match("^gen_%d+") or name:match("^gen%d+") or name:match("^gen_") or name:match("^gen%-")
+        or name:find("motor") or name:find("engine") or name:find("powerbox") or name:find("electricbox") 
+        or name:find("breaker") or name:find("genstation") or name:find("machine") then
         return true
     end
-    if obj:GetAttribute("RepairProgress") ~= nil or obj:GetAttribute("Progress") ~= nil then
+
+    -- 2. Parent Container Heuristics (e.g. Workspace.Generators.1 or Workspace.Map.Generators.GenA)
+    if pName == "generators" or pName == "gens" or pName:find("generator") then
+        if obj:IsA("Model") or obj:IsA("BasePart") then
+            return true
+        end
+    end
+
+    -- 3. Attributes Match
+    if obj:GetAttribute("RepairProgress") ~= nil 
+        or obj:GetAttribute("Progress") ~= nil 
+        or obj:GetAttribute("GenProgress") ~= nil 
+        or obj:GetAttribute("GeneratorProgress") ~= nil 
+        or obj:GetAttribute("Percent") ~= nil
+        or obj:GetAttribute("Repaired") ~= nil then
         return true
     end
-    if obj:FindFirstChild("RepairProgress") or obj:FindFirstChild("Progress") then
+
+    -- 4. Value Objects Match
+    if obj:FindFirstChild("RepairProgress") 
+        or obj:FindFirstChild("Progress") 
+        or obj:FindFirstChild("GenProgress") 
+        or obj:FindFirstChild("GeneratorProgress") 
+        or obj:FindFirstChild("RepairPrompt") 
+        or obj:FindFirstChild("GenPrompt") then
         return true
     end
+
+    -- 5. ProximityPrompt Match (Violence District & standard DBD interaction prompts)
+    local prompt = obj:FindFirstChildWhichIsA("ProximityPrompt", true)
+    if prompt then
+        local act = prompt.ActionText:lower()
+        local objT = prompt.ObjectText:lower()
+        if act:find("repair") or act:find("fix") or act:find("work") or objT:find("gen") or objT:find("generator") or objT:find("repair") then
+            return true
+        end
+    end
+
     return false
 end
 
@@ -479,14 +535,14 @@ local function GetGeneratorProgress(gen)
         end
     end
 
-    for _, attr in ipairs({"RepairProgress", "Progress", "Percent", "Repaired", "Amount"}) do
+    for _, attr in ipairs({"RepairProgress", "Progress", "Percent", "Repaired", "GenProgress", "GeneratorProgress"}) do
         local v = gen:GetAttribute(attr)
         if type(v) == "number" then
             State.GenProgObjCache[gen] = attr
             return v
         end
     end
-    for _, name in ipairs({"RepairProgress", "Progress", "Percent", "Repaired", "Value"}) do
+    for _, name in ipairs({"RepairProgress", "Progress", "Percent", "Repaired", "GenProgress", "GeneratorProgress"}) do
         local valObj = gen:FindFirstChild(name, true)
         if valObj and (valObj:IsA("NumberValue") or valObj:IsA("IntValue")) then
             State.GenProgObjCache[gen] = valObj
@@ -497,8 +553,11 @@ local function GetGeneratorProgress(gen)
     if cfg then
         for _, vObj in ipairs(cfg:GetChildren()) do
             if vObj:IsA("NumberValue") or vObj:IsA("IntValue") then
-                State.GenProgObjCache[gen] = vObj
-                return vObj.Value
+                local vn = vObj.Name:lower()
+                if vn:find("prog") or vn:find("repair") or vn:find("percent") then
+                    State.GenProgObjCache[gen] = vObj
+                    return vObj.Value
+                end
             end
         end
     end
@@ -506,19 +565,19 @@ local function GetGeneratorProgress(gen)
 end
 
 local function IsGeneratorCompleted(gen, progress)
-    if progress >= 100 then return true end
-    if gen:GetAttribute("Completed") == true or gen:GetAttribute("Finished") == true or gen:GetAttribute("Powered") == true then
+    if progress and progress >= 100 then return true end
+    if gen:GetAttribute("Completed") == true or gen:GetAttribute("Finished") == true or gen:GetAttribute("Powered") == true or gen:GetAttribute("Done") == true then
         return true
     end
     local cachedDone = State.GenDoneObjCache[gen]
     if cachedDone then
         if typeof(cachedDone) == "string" then
             return gen:GetAttribute(cachedDone) == true
-        elseif cachedDone.Parent then
+        elseif cachedDone.Parent and cachedDone:IsA("BoolValue") then
             return cachedDone.Value == true
         end
     end
-    for _, name in ipairs({"Completed", "Finished", "Powered", "Done"}) do
+    for _, name in ipairs({"Completed", "Finished", "Powered", "Done", "Repaired"}) do
         local b = gen:FindFirstChild(name, true)
         if b and b:IsA("BoolValue") then
             State.GenDoneObjCache[gen] = b
@@ -673,32 +732,64 @@ local function IndexWorldObjects()
     local gens, gates, hatches = {}, {}, {}
     local checked = {}
 
-    -- Targeted Map Search (Never scans entire 50k+ Workspace unless map folder missing)
-    local mapFolder = Services.Workspace:FindFirstChild("Map") 
-        or Services.Workspace:FindFirstChild("Interactables") 
-        or Services.Workspace:FindFirstChild("Objects") 
-        or Services.Workspace:FindFirstChild("Game")
-
+    -- 1. Gather all potential map and objective containers
     local searchRoots = {}
-    if mapFolder then
-        table.insert(searchRoots, mapFolder)
-    else
+    local containerNames = {
+        "map", "currentmap", "mapfolder", "generators", "gens", 
+        "interactables", "interactive", "objects", "props", "objectives", 
+        "game", "gamefolder", "environment", "spawns"
+    }
+
+    for _, child in ipairs(Services.Workspace:GetChildren()) do
+        if child:IsA("Folder") or child:IsA("Model") then
+            local cName = child.Name:lower()
+            for _, kw in ipairs(containerNames) do
+                if cName:find(kw) then
+                    table.insert(searchRoots, child)
+                    break
+                end
+            end
+        end
+    end
+
+    if #searchRoots == 0 then
         table.insert(searchRoots, Services.Workspace)
     end
 
+    -- 2. Scan gathered search roots
     for _, root in ipairs(searchRoots) do
-        if root then
+        if root and root.Parent then
             for _, obj in ipairs(root:GetDescendants()) do
-                if obj:IsA("Model") and not checked[obj] then
-                    checked[obj] = true
+                if (obj:IsA("Model") or obj:IsA("Folder") or obj:IsA("BasePart")) and not checked[obj] then
                     local name = obj.Name:lower()
                     if IsGeneratorModel(obj) then
+                        checked[obj] = true
                         table.insert(gens, obj)
-                    elseif (name == "gate" or name:find("exitgate") or name:find("door")) then
+                    elseif (name == "gate" or name:find("exitgate") or name:find("exit_gate") or name:find("door") or name:find("escape")) and not name:find("player") then
+                        checked[obj] = true
                         table.insert(gates, obj)
-                    elseif name == "hatch" or name == "trapdoor" or name:find("hatch") then
+                    elseif (name == "hatch" or name == "trapdoor" or name:find("hatch")) and not name:find("player") then
+                        checked[obj] = true
                         table.insert(hatches, obj)
                     end
+                end
+            end
+        end
+    end
+
+    -- 3. Fallback: If 0 generators found, scan entire Workspace descendants
+    if #gens == 0 then
+        for _, obj in ipairs(Services.Workspace:GetDescendants()) do
+            if (obj:IsA("Model") or obj:IsA("Folder") or obj:IsA("BasePart")) and not checked[obj] then
+                if IsGeneratorModel(obj) then
+                    checked[obj] = true
+                    table.insert(gens, obj)
+                elseif #gates == 0 and (obj.Name:lower():find("gate") or obj.Name:lower():find("exit")) and not obj.Name:lower():find("player") then
+                    checked[obj] = true
+                    table.insert(gates, obj)
+                elseif #hatches == 0 and (obj.Name:lower():find("hatch")) and not obj.Name:lower():find("player") then
+                    checked[obj] = true
+                    table.insert(hatches, obj)
                 end
             end
         end
@@ -744,6 +835,8 @@ local function ProcessWorldESP()
             local tag = gen:FindFirstChild("ESP_Tag", true)
             if tag then tag:Destroy() end
             RemoveHighlight(gen)
+            local a = State.AnchorCache[gen]
+            if a then RemoveHighlight(a) end
         end
         return
     end
@@ -752,7 +845,7 @@ local function ProcessWorldESP()
     local myRoot = myChar and myChar:FindFirstChild("HumanoidRootPart")
     local myPos = myRoot and myRoot.Position
 
-    -- 1. Generators (Progress & Highlight)
+    -- 1. Generators (Progress & Highlight - Renders across entire map up to 2500 studs!)
     local finished = 0
     for i = #State.Generators, 1, -1 do
         local gen = State.Generators[i]
@@ -760,25 +853,38 @@ local function ProcessWorldESP()
             local prog = GetGeneratorProgress(gen)
             local isDone = IsGeneratorCompleted(gen, prog)
             local anchor = ResolveAnchorPart(gen)
+            local targetHl = (gen:IsA("Model") and #gen:GetChildren() > 0) and gen or anchor
 
-            if isDone then
-                finished = finished + 1
-                local oldTag = gen:FindFirstChild("ESP_Tag", true)
+            if not Config.Visuals.GeneratorESP then
+                local oldTag = gen:FindFirstChild("ESP_Tag", true) or (anchor and anchor:FindFirstChild("ESP_Tag"))
                 if oldTag then oldTag:Destroy() end
                 RemoveHighlight(gen)
-            elseif anchor and anchor:IsA("BasePart") and Config.Visuals.GeneratorESP then
-                local cp = math.clamp(prog, 0, 100)
-                local col = Config.Palette.RedDark:Lerp(Config.Palette.RedPrimary, cp / 100)
+                if anchor then RemoveHighlight(anchor) end
+            elseif anchor and anchor:IsA("BasePart") then
                 local dist = myPos and math.floor((anchor.Position - myPos).Magnitude) or 0
-                local text = string.format("GEN [%.1f%%]", prog)
-                if Config.Visuals.ShowDistance then
-                    text = string.format("GEN [%.1f%%]\n<font size=\"8\">[%dM]</font>", prog, dist)
+                local col
+                local text
+
+                if isDone then
+                    finished = finished + 1
+                    col = Color3.fromRGB(0, 235, 140) -- Vibrant emerald green
+                    text = "GEN [DONE]"
+                    if Config.Visuals.ShowDistance then
+                        text = string.format("GEN [DONE]\n<font size=\"8\">[%dM]</font>", dist)
+                    end
+                else
+                    local cp = math.clamp(prog, 0, 100)
+                    col = Config.Palette.RedDark:Lerp(Config.Palette.RedPrimary, cp / 100)
+                    text = string.format("GEN [%.1f%%]", prog)
+                    if Config.Visuals.ShowDistance then
+                        text = string.format("GEN [%.1f%%]\n<font size=\"8\">[%dM]</font>", prog, dist)
+                    end
                 end
 
                 local tag = anchor:FindFirstChild("ESP_Tag") or gen:FindFirstChild("ESP_Tag")
                 if not tag then
-                    tag = BuildTag(text, col, Config.Visuals.GenProgressBars)
-                    tag.StudsOffset = Vector3.new(0, 3.2, 0)
+                    tag = BuildTag(text, col, not isDone and Config.Visuals.GenProgressBars)
+                    tag.StudsOffset = Vector3.new(0, 3.5, 0)
                     tag.Adornee = anchor
                     tag.Parent = anchor
                     table.insert(State.Billboards, tag)
@@ -788,24 +894,32 @@ local function ProcessWorldESP()
                         lbl.Text = text
                         lbl.TextColor3 = col
                     end
-                    local fill = tag:FindFirstChild("BarBG") and tag.BarBG:FindFirstChild("Fill")
-                    if fill then
-                        fill.Size = UDim2.new(cp / 100, 0, 1, 0)
-                        fill.BackgroundColor3 = col
+                    local bar = tag:FindFirstChild("BarBG")
+                    if isDone then
+                        if bar then bar.Visible = false end
+                    else
+                        if bar then
+                            bar.Visible = Config.Visuals.GenProgressBars
+                            local fill = bar:FindFirstChild("Fill")
+                            if fill then
+                                fill.Size = UDim2.new(math.clamp(prog / 100, 0, 1), 0, 1, 0)
+                                fill.BackgroundColor3 = col
+                            end
+                        end
                     end
                 end
 
-                if dist <= 75 and State.HighlightCount < Config.Visuals.MaxHighlights then
-                    SafeHighlight(anchor, col, false)
+                -- Full-map 3D glowing chams across entire match!
+                if dist <= 2500 and State.HighlightCount < Config.Visuals.MaxHighlights then
+                    SafeHighlight(targetHl, col, false)
                 else
-                    RemoveHighlight(gen)
-                    RemoveHighlight(anchor)
+                    RemoveHighlight(targetHl)
                 end
             else
-                local oldTag = gen:FindFirstChild("ESP_Tag", true)
+                local oldTag = gen:FindFirstChild("ESP_Tag", true) or (anchor and anchor:FindFirstChild("ESP_Tag"))
                 if oldTag then oldTag:Destroy() end
                 RemoveHighlight(gen)
-                RemoveHighlight(anchor)
+                if anchor then RemoveHighlight(anchor) end
             end
         else
             table.remove(State.Generators, i)
@@ -813,17 +927,17 @@ local function ProcessWorldESP()
     end
     State.FinishedGens = finished
 
-    -- 2. Enhanced Object ESP Processor (3D PHYSICAL OBJECT HIGHLIGHT WITH OPTIONAL NAME)
+    -- 2. Enhanced Object ESP Processor (3D PHYSICAL OBJECT HIGHLIGHT WITH BILLBOARD NAME)
     local function ProcessObjectESPList(list, isEnabled, labelName, color, highlightRadius, showBillboard)
-        highlightRadius = highlightRadius or 120
+        highlightRadius = highlightRadius or 9999
         for _, obj in ipairs(list) do
             if obj and obj.Parent then
                 local anchor = ResolveAnchorPart(obj)
+                local target = (obj:IsA("Model") and #obj:GetChildren() > 0) and obj or anchor
                 if anchor and anchor:IsA("BasePart") and isEnabled then
                     local aPos = anchor.Position
                     local dist = myPos and (aPos - myPos).Magnitude or 0
 
-                    -- 1. Billboard Name Tag (ONLY created/shown if showBillboard is true)
                     if showBillboard then
                         local distM = math.floor(dist)
                         local text = labelName
@@ -834,7 +948,7 @@ local function ProcessWorldESP()
                         local tag = anchor:FindFirstChild("ESP_Tag") or obj:FindFirstChild("ESP_Tag")
                         if not tag then
                             tag = BuildTag(text, color, false)
-                            tag.StudsOffset = Vector3.new(0, 2.5, 0)
+                            tag.StudsOffset = Vector3.new(0, 3.2, 0)
                             tag.Adornee = anchor
                             tag.Parent = anchor
                             table.insert(State.Billboards, tag)
@@ -846,14 +960,11 @@ local function ProcessWorldESP()
                             end
                         end
                     else
-                        -- Destroy any name tag so only the 3D physical object is visible
                         local oldTag = obj:FindFirstChild("ESP_Tag", true) or (anchor and anchor:FindFirstChild("ESP_Tag"))
                         if oldTag then oldTag:Destroy() end
                     end
 
-                    -- 2. 3D Physical Object ESP (Highlights the actual 3D model/parts through walls!)
-                    local target = (obj:IsA("Model") and #obj:GetChildren() > 0) and obj or anchor
-                    if dist <= highlightRadius then
+                    if dist <= highlightRadius and State.HighlightCount < Config.Visuals.MaxHighlights then
                         SafeHighlight(target, color, false)
                     else
                         RemoveHighlight(target)
@@ -868,9 +979,9 @@ local function ProcessWorldESP()
         end
     end
 
-    -- Exit Gates & Escape Hatches (Physical 3D highlight on exit gate model, NO name tag)
-    ProcessObjectESPList(State.WorldObjects.Gates, Config.Visuals.GateESP, "EXIT GATE", Config.Palette.Gate, 9999, false)
-    ProcessObjectESPList(State.WorldObjects.Hatches, Config.Visuals.HatchESP, "HATCH", Config.Palette.Hatch, 9999, false)
+    -- Exit Gates & Escape Hatches (Physical 3D highlight + floating billboard tag!)
+    ProcessObjectESPList(State.WorldObjects.Gates, Config.Visuals.GateESP, "EXIT GATE", Config.Palette.Gate, 9999, true)
+    ProcessObjectESPList(State.WorldObjects.Hatches, Config.Visuals.HatchESP, "HATCH", Config.Palette.Hatch, 9999, true)
 end
 
 --------------------------------------------------------------------------------
@@ -890,7 +1001,9 @@ local IgnoreKeywords = {
     "walk", "run", "idle", "sprint", "fall", "jump", "land", "crouch",
     "vault", "climb", "emote", "dance", "sit", "breathe", "turn", "inspect",
     "repair", "heal", "door", "pickup", "drop", "generator", "interact",
-    "carried", "carry", "hook", "unhook", "wiggle", "struggle", "fix"
+    "carried", "carry", "hook", "unhook", "wiggle", "struggle", "fix",
+    "stun", "blind", "flashed", "daze", "dazed", "headache", "stumble",
+    "pallet", "wipe", "cool", "recover", "miss"
 }
 
 local function GetCharacterAnimator(char)
@@ -963,10 +1076,10 @@ local function IsAttackAnimation(track)
     return false
 end
 
--- Precise Right-Click Parry: Executes ONLY when enabled, Right-Click only, 0ms equip delay
+-- Precise Right-Click Parry: Executes ONLY when enabled (or manual test), Right-Click only, 0ms equip delay
 local function ExecuteAutoParry(source)
-    -- STRICT SAFETY: Only works when user taps enable, and LocalPlayer is NOT the Killer!
-    if not Config.Combat.AutoParry then return false end
+    -- STRICT SAFETY: Only works when user taps enable (or presses MANUAL TEST), and LocalPlayer is NOT the Killer!
+    if not Config.Combat.AutoParry and source ~= "MANUAL_TEST" then return false end
     if IsLocalPlayerKiller() then return false end
 
     local now = tick()
@@ -1080,7 +1193,7 @@ local function ExecuteAutoParry(source)
     return true
 end
 
--- Smartly triggers parry ONLY when the Killer taps hit within striking range
+-- Smartly triggers parry ONLY when the Killer taps hit towards the survivor within striking range
 local function CheckAndTriggerParry(char, player, track)
     -- ONLY WHEN TAP ENABLE: Must be actively enabled by user
     if not Config.Combat.AutoParry or not char then return end
@@ -1101,9 +1214,14 @@ local function CheckAndTriggerParry(char, player, track)
     local dist = (tRoot.Position - myRoot.Position).Magnitude
     if dist > Config.Combat.ParryDistance then return end
 
-    -- Direction gate: Killer must be facing towards survivor when tapping hit
-    local toMe = (myRoot.Position - tRoot.Position).Unit
-    if tRoot.CFrame.LookVector:Dot(toMe) < -0.25 then return end
+    -- Direction gate: Killer must be facing towards survivor when tapping hit (aiming at me)
+    if Config.Combat.FaceCheck then
+        local toMe = (myRoot.Position - tRoot.Position).Unit
+        if tRoot.CFrame.LookVector:Dot(toMe) < 0.15 then return end
+    else
+        local toMe = (myRoot.Position - tRoot.Position).Unit
+        if tRoot.CFrame.LookVector:Dot(toMe) < -0.70 then return end
+    end
 
     -- Track deduplication: Ensure exactly one parry per attack swing
     if track then
@@ -1116,24 +1234,36 @@ local function CheckAndTriggerParry(char, player, track)
     ExecuteAutoParry("KILLER_TAP_HIT")
 end
 
--- Strictly binds combat listeners ONLY to the Killer
+-- Strictly binds combat listeners ONLY to the Killer (with dynamic loading fallback)
 local function BindCombatListeners(player, char)
     if player == LocalPlayer or not char then return end
 
     -- Strictly only bind to the Killer
     if not IsTargetKiller(player) then return end
 
-    if State.CombatBound[char] then return end
+    local animator = GetCharacterAnimator(char)
+    if not animator then
+        local human = char:FindFirstChildOfClass("Humanoid")
+        if human and not State.CombatBound[human] then
+            State.CombatBound[human] = true
+            local conn = human.DescendantAdded:Connect(function(desc)
+                if desc:IsA("Animator") then
+                    BindCombatListeners(player, char)
+                end
+            end)
+            table.insert(State.ParryConnections, conn)
+        end
+        return
+    end
+
+    if State.BoundAnimators[animator] then return end
+    State.BoundAnimators[animator] = true
     State.CombatBound[char] = true
 
-    local animator = GetCharacterAnimator(char)
-    if animator and not State.BoundAnimators[animator] then
-        State.BoundAnimators[animator] = true
-        local conn = animator.AnimationPlayed:Connect(function(track)
-            CheckAndTriggerParry(char, player, track)
-        end)
-        table.insert(State.ParryConnections, conn)
-    end
+    local conn = animator.AnimationPlayed:Connect(function(track)
+        CheckAndTriggerParry(char, player, track)
+    end)
+    table.insert(State.ParryConnections, conn)
 end
 
 --------------------------------------------------------------------------------
@@ -1684,7 +1814,12 @@ local function ProcessEntities()
                 if dist <= Config.Combat.ParryDistance then
                     local toMe = (myRoot.Position - r.Position).Unit
                     -- Killer must be facing towards survivor
-                    local isFacingMe = r.CFrame.LookVector:Dot(toMe) >= -0.25
+                    local isFacingMe
+                    if Config.Combat.FaceCheck then
+                        isFacingMe = r.CFrame.LookVector:Dot(toMe) >= 0.15
+                    else
+                        isFacingMe = r.CFrame.LookVector:Dot(toMe) >= -0.70
+                    end
                     if isFacingMe then
                         local anim = GetCharacterAnimator(c)
                         if anim then
@@ -3171,8 +3306,9 @@ State.Connections.Heartbeat = Services.Run.Heartbeat:Connect(function()
         end
     end
 
-    -- Periodic Map Re-index: Throttled to 16 seconds (Prevents heavy lag spikes!)
-    if now - lastDeepScan > 16 then
+    -- Periodic Map Re-index: Rapid retry if 0 gens, otherwise throttled to 16 seconds
+    local genScanInterval = (#State.Generators == 0) and 1.5 or 16
+    if now - lastDeepScan > genScanInterval then
         lastDeepScan = now
         IndexWorldObjects()
         if CardGensLeft then
