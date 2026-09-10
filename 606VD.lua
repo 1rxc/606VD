@@ -1,9 +1,9 @@
 --[[
     ================================================================
-    606VD // PRO REALITY SUITE 2026 // v1.11
+    606VD // PRO REALITY SUITE 2026 // v1.12
     CONFIDENTIAL & PROPRIETARY // PRIVATE SOURCE BUILD
     SYSTEM: SMART SINGLE KILLER ENGINE + SMART GREAT FIX GEN + LUXURY ESP
-    VERSION: 1.11
+    VERSION: 1.12
     AESTHETIC: GTA 6 LUXURY (ZERO STROKES // STRICT ZERO EMOJIS)
     ================================================================
 ]]
@@ -27,7 +27,7 @@ local Camera = Services.Workspace.CurrentCamera
 local Config = {
     System = {
         Active = true,
-        Version = "1.11",
+        Version = "1.12",
         MenuKey = Enum.KeyCode.RightControl,
         AltKey = Enum.KeyCode.V
     },
@@ -286,11 +286,11 @@ local function IsGameStarted()
         if role:find("killer") or role:find("slasher") or role:find("stalker") or role:find("hunter") then
             return true
         end
-        if GetGameValue(p, "IsKiller") == true or GetGameValue(p, "Mask") ~= nil then
+        if GetGameValue(p, "IsKiller") == true then
             return true
         end
         local c = p.Character
-        if c and (GetGameValue(c, "IsKiller") == true or GetGameValue(c, "Mask") ~= nil or c:FindFirstChild("Mask")) then
+        if c and (GetGameValue(c, "IsKiller") == true) then
             return true
         end
     end
@@ -298,7 +298,132 @@ local function IsGameStarted()
     return false
 end
 
+-- STRICT DISQUALIFICATION: Verifies if a player is definitively a Survivor (CANNOT be Killer)
+local function IsPlayerSurvivor(p)
+    if not p then return true end
+    if p.Team then
+        local tName = p.Team.Name:lower()
+        if tName:find("survivor") or tName:find("victim") or tName:find("human") or tName:find("runner") or tName:find("lobby") or tName:find("spectat") then
+            return true
+        end
+    end
+
+    local role = tostring(GetGameValue(p, "Role") or (p.GetAttribute and p:GetAttribute("Role")) or ""):lower()
+    if role:find("survivor") or role:find("victim") or role:find("human") or role:find("runner") then
+        return true
+    end
+
+    local char = p.Character
+    if char then
+        local cRole = tostring(GetGameValue(char, "Role") or (char.GetAttribute and char:GetAttribute("Role")) or ""):lower()
+        if cRole:find("survivor") or cRole:find("victim") or cRole:find("human") or cRole:find("runner") then
+            return true
+        end
+
+        -- Survivor-specific item check: If player possesses survivor items, they are strictly a Survivor!
+        local bp = p:FindFirstChildOfClass("Backpack")
+        for _, container in ipairs({char, bp}) do
+            if container then
+                for _, item in ipairs(container:GetChildren()) do
+                    if item:IsA("Tool") or item:IsA("Model") then
+                        local n = item.Name:lower()
+                        if n:find("parrying dagger") or n:find("motion tracker") or n:find("twist of fate") 
+                            or n:find("flashlight") or n:find("medkit") or n:find("toolbox") or n:find("lockpick") then
+                            return true
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    return false
+end
+
+-- Calculates exact killer confidence score for a player in Violence District
+local function GetKillerConfidence(p)
+    if not p or not p.Parent or not p.Character then return -9999 end
+    if IsPlayerSurvivor(p) then return -9999 end
+
+    local score = 0
+    local char = p.Character
+
+    -- 1. Definitive Killer Team (Highest Authority)
+    if p.Team then
+        local t = p.Team.Name:lower()
+        if (t:find("killer") or t:find("slasher") or t:find("hunter") or t:find("murderer") or t:find("monster") or t:find("beast")) 
+            and not (t:find("survivor") or t:find("victim") or t:find("lobby")) then
+            score = score + 100
+        end
+    end
+
+    -- 2. Player Attributes & Role Values
+    local killerArchetypes = {"slasher", "abysswalker", "masked", "the killer", "killer", "hidden", "veil", "stalker", "cure", "butcher", "fiend"}
+    local role = tostring(GetGameValue(p, "Role") or (p.GetAttribute and p:GetAttribute("Role")) or GetGameValue(p, "SelectedKiller") or (p.GetAttribute and p:GetAttribute("SelectedKiller")) or GetGameValue(p, "Killer") or ""):lower()
+    for _, arch in ipairs(killerArchetypes) do
+        if role:find(arch) then
+            score = score + 80
+            break
+        end
+    end
+    if GetGameValue(p, "IsKiller") == true or (p.GetAttribute and p:GetAttribute("IsKiller") == true) then
+        score = score + 70
+    end
+
+    -- 3. Character Model Inspection (Violence District renames killer character model to killer archetype)
+    local cName = char.Name:lower()
+    for _, arch in ipairs(killerArchetypes) do
+        if cName:find(arch) and cName ~= p.Name:lower() then
+            score = score + 75
+            break
+        end
+    end
+
+    local cRole = tostring(GetGameValue(char, "Role") or (char.GetAttribute and char:GetAttribute("Role")) or GetGameValue(char, "SelectedKiller") or ""):lower()
+    for _, arch in ipairs(killerArchetypes) do
+        if cRole:find(arch) then
+            score = score + 70
+            break
+        end
+    end
+    if GetGameValue(char, "IsKiller") == true or (char.GetAttribute and char:GetAttribute("IsKiller") == true) then
+        score = score + 65
+    end
+
+    -- 4. Killer Visual Components (Red Stain, Terror Radius)
+    if char:FindFirstChild("RedStain", true) or char:FindFirstChild("TerrorRadius", true) or char:FindFirstChild("RedLight", true) or char:FindFirstChild("Stain", true) then
+        score = score + 50
+    end
+    if (GetGameValue(p, "Mask") ~= nil or GetGameValue(char, "Mask") ~= nil or char:FindFirstChild("Mask")) then
+        score = score + 30
+    end
+
+    -- 5. Killer Weapon Arsenal (Excludes common survivor items)
+    local bp = p:FindFirstChildOfClass("Backpack")
+    for _, cont in ipairs({char, bp}) do
+        if cont then
+            for _, item in ipairs(cont:GetChildren()) do
+                if item:IsA("Tool") or item:IsA("Model") or item:IsA("MeshPart") then
+                    local tName = item.Name:lower()
+                    -- Strict filter: MUST NOT be any survivor item
+                    if not (tName:find("parrying") or tName:find("dagger") or tName:find("twist") or tName:find("tracker") or tName:find("gun") or tName:find("flashlight") or tName:find("medkit") or tName:find("toolbox")) then
+                        if tName:find("cleaver") or tName:find("machete") or tName:find("chainsaw") or tName:find("scythe") 
+                            or tName:find("killerweapon") or tName:find("slasher") or tName:find("abysswalker") or tName:find("veil")
+                            or tName:find("cureneedle") or tName:find("claws") then
+                            score = score + 45
+                            break
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    return score
+end
+
 -- SMART SINGLE KILLER RESOLUTION (OPERATES STRICTLY ONLY WHEN GAME HAS STARTED)
+-- Mathematically guarantees AT MOST 1 Killer in the entire match!
 local function ResolveSingleKiller()
     -- Only detect/resolve killer once the game has actually started!
     if not IsGameStarted() then
@@ -308,108 +433,34 @@ local function ResolveSingleKiller()
 
     local now = tick()
     if State.ActiveKiller and State.ActiveKiller.Parent == Services.Players and (now - State.LastKillerCheck < 0.4) then
-        return State.ActiveKiller
+        -- Verify cached killer is still valid and not a survivor
+        if not IsPlayerSurvivor(State.ActiveKiller) then
+            return State.ActiveKiller
+        else
+            State.ActiveKiller = nil
+        end
     end
     State.LastKillerCheck = now
 
-    -- Check if currently cached killer is still valid and in the match
-    if State.ActiveKiller and State.ActiveKiller.Parent == Services.Players then
-        local cChar = State.ActiveKiller.Character
-        if cChar then
-            local team = State.ActiveKiller.Team and State.ActiveKiller.Team.Name:lower() or ""
-            local role = tostring(GetGameValue(State.ActiveKiller, "Role") or GetGameValue(State.ActiveKiller, "SelectedKiller") or ""):lower()
-            local isKAttr = GetGameValue(State.ActiveKiller, "IsKiller") or GetGameValue(cChar, "IsKiller")
-            local hasMask = GetGameValue(State.ActiveKiller, "Mask") or GetGameValue(cChar, "Mask") or cChar:FindFirstChild("Mask")
-            local isCarrying = cChar:FindFirstChild("Carrying") or GetGameValue(cChar, "IsCarrying")
+    -- Evaluate all players and find the single highest confidence killer
+    local bestPlayer = nil
+    local bestScore = 0
 
-            if team:find("survivor") or team:find("victim") or team:find("lobby") then
-                State.ActiveKiller = nil
-            elseif team:find("killer") or team:find("slasher") or role:find("killer") or isKAttr == true or hasMask or isCarrying then
-                return State.ActiveKiller
-            else
-                local hasWeapon = false
-                for _, item in ipairs(cChar:GetChildren()) do
-                    if item:IsA("Tool") or item:IsA("Model") or item:IsA("MeshPart") then
-                        local n = item.Name:lower()
-                        if n:find("knife") or n:find("machete") or n:find("chainsaw") or n:find("cleaver") or n:find("axe") or n:find("hammer") or n:find("bat") or n:find("killerweapon") or n:find("slasher") or n:find("scythe") or n:find("claws") or n:find("blade") or n:find("pipe") or n:find("sickle") then
-                            hasWeapon = true; break
-                        end
-                    end
-                end
-                if hasWeapon then return State.ActiveKiller end
-            end
-        end
-    end
-
-    -- Priority 1: Definitive Killer/Slasher team (strictly non-survivor, non-lobby)
     for _, p in ipairs(Services.Players:GetPlayers()) do
-        local team = p.Team and p.Team.Name:lower() or ""
-        if (team:find("killer") or team:find("slasher") or team:find("hunter") or team:find("murderer") or team:find("beast") or team:find("monster")) and not (team:find("survivor") or team:find("victim") or team:find("lobby")) then
-            State.ActiveKiller = p
-            return p
+        local score = GetKillerConfidence(p)
+        if score > bestScore then
+            bestScore = score
+            bestPlayer = p
         end
     end
 
-    -- Priority 2: Definitive Killer role, attributes & Violence District archetypes
-    local killerArchetypes = {"killer", "slasher", "stalker", "hidden", "masked", "abysswalker", "veil", "cure", "hunter", "murderer", "beast", "butcher", "fiend"}
-    for _, p in ipairs(Services.Players:GetPlayers()) do
-        local role = tostring(GetGameValue(p, "Role") or GetGameValue(p, "SelectedKiller") or GetGameValue(p, "Killer") or ""):lower()
-        local isKAttr = GetGameValue(p, "IsKiller")
-        local maskAttr = GetGameValue(p, "Mask")
-        for _, arch in ipairs(killerArchetypes) do
-            if role:find(arch) then
-                State.ActiveKiller = p
-                return p
-            end
-        end
-        if isKAttr == true or maskAttr ~= nil then
-            State.ActiveKiller = p
-            return p
-        end
-
-        local char = p.Character
-        if char then
-            local charRole = tostring(GetGameValue(char, "Role") or GetGameValue(char, "SelectedKiller") or char.Name):lower()
-            local charIsK = GetGameValue(char, "IsKiller")
-            local charMask = GetGameValue(char, "Mask") or char:FindFirstChild("Mask")
-            local isCarrying = char:FindFirstChild("Carrying") or GetGameValue(char, "IsCarrying")
-            for _, arch in ipairs(killerArchetypes) do
-                if charRole:find(arch) then
-                    State.ActiveKiller = p
-                    return p
-                end
-            end
-            if charIsK == true or charMask ~= nil or isCarrying then
-                State.ActiveKiller = p
-                return p
-            end
-        end
+    if bestPlayer and bestScore > 0 then
+        State.ActiveKiller = bestPlayer
+        return bestPlayer
     end
 
-    -- Priority 3: Character & Backpack Weapon Arsenal Inspection (Excludes common lobby fists)
-    for _, p in ipairs(Services.Players:GetPlayers()) do
-        local char = p.Character
-        local bp = p:FindFirstChildOfClass("Backpack")
-        local containers = {char, bp}
-        for _, cont in ipairs(containers) do
-            if cont then
-                for _, item in ipairs(cont:GetChildren()) do
-                    if item:IsA("Tool") or item:IsA("Model") or item:IsA("MeshPart") then
-                        local tName = item.Name:lower()
-                        if tName:find("knife") or tName:find("machete") or tName:find("chainsaw") or tName:find("cleaver") 
-                            or tName:find("slasher") or tName:find("murderer") or tName:find("axe") or tName:find("hammer")
-                            or tName:find("killerweapon") or tName:find("scythe") or tName:find("claws")
-                            or tName:find("blade") or tName:find("sword") or tName:find("sickle") or tName:find("pipe") then
-                            State.ActiveKiller = p
-                            return p
-                        end
-                    end
-                end
-            end
-        end
-    end
-
-    return State.ActiveKiller
+    State.ActiveKiller = nil
+    return nil
 end
 
 -- Strictly determines player role: killer is the ONLY 1 in game; everyone else is Survivor
@@ -421,84 +472,25 @@ local function GetPlayerRole(player)
 end
 
 local function IsLocalPlayerKiller()
-    if State.ActiveKiller == LocalPlayer then return true end
-    if State.ActiveKiller and State.ActiveKiller ~= LocalPlayer then return false end
-
+    if not IsGameStarted() then return false end
     local killer = ResolveSingleKiller()
-    if killer == LocalPlayer then return true end
-    if killer and killer ~= LocalPlayer then return false end
-
-    local team = LocalPlayer.Team and LocalPlayer.Team.Name:lower() or ""
-    if (team:find("killer") or team:find("slasher") or team:find("hunter") or team:find("murderer") or team:find("beast") or team:find("stalker") or team:find("hidden") or team:find("abysswalker") or team:find("veil") or team:find("cure")) and not (team:find("survivor") or team:find("victim")) then
-        return true
+    if killer then
+        return killer == LocalPlayer
     end
 
-    local role = tostring(GetGameValue(LocalPlayer, "Role") or GetGameValue(LocalPlayer, "SelectedKiller") or ""):lower()
-    local killerArchetypes = {"killer", "slasher", "stalker", "hidden", "masked", "abysswalker", "veil", "cure", "hunter", "murderer", "beast", "butcher", "fiend"}
-    for _, arch in ipairs(killerArchetypes) do
-        if role:find(arch) then return true end
-    end
-    if GetGameValue(LocalPlayer, "IsKiller") == true then return true end
-
-    local char = LocalPlayer.Character
-    if char then
-        if GetGameValue(char, "IsKiller") == true or GetGameValue(char, "Mask") ~= nil or char:FindFirstChild("Carrying") then
-            return true
-        end
-        for _, item in ipairs(char:GetChildren()) do
-            if item:IsA("Tool") then
-                local n = item.Name:lower()
-                if n:find("knife") or n:find("machete") or n:find("chainsaw") or n:find("cleaver") or n:find("axe") or n:find("hammer") or n:find("slasher") or n:find("scythe") or n:find("claws") or n:find("weapon") or n:find("blade") then
-                    return true
-                end
-            end
-        end
-    end
-
-    return false
+    -- If killer not resolved yet, evaluate local player confidence
+    local score = GetKillerConfidence(LocalPlayer)
+    return score > 0
 end
 
 -- STRICT SINGLE KILLER VERIFICATION: Identifies if an opponent is the hostile Killer
+-- Guarantees true ONLY for the 1 confirmed match killer
 local function IsTargetKiller(p)
     if not p or p == LocalPlayer then return false end
     if not IsGameStarted() then return false end
-    if State.ActiveKiller and p == State.ActiveKiller then return true end
 
     local k = ResolveSingleKiller()
-    if k and p == k then return true end
-
-    local team = p.Team and p.Team.Name:lower() or ""
-    if (team:find("killer") or team:find("slasher") or team:find("hunter") or team:find("murderer") or team:find("beast") or team:find("stalker") or team:find("hidden") or team:find("abysswalker") or team:find("veil") or team:find("cure") or team:find("monster")) and not (team:find("survivor") or team:find("victim") or team:find("lobby")) then
-        return true
-    end
-
-    local role = tostring(GetGameValue(p, "Role") or GetGameValue(p, "SelectedKiller") or GetGameValue(p, "Killer") or ""):lower()
-    local killerArchetypes = {"killer", "slasher", "stalker", "hidden", "masked", "abysswalker", "veil", "cure", "hunter", "murderer", "beast", "butcher", "fiend"}
-    for _, arch in ipairs(killerArchetypes) do
-        if role:find(arch) then return true end
-    end
-    if GetGameValue(p, "IsKiller") == true then return true end
-
-    local char = p.Character
-    if char then
-        local charRole = tostring(GetGameValue(char, "Role") or GetGameValue(char, "SelectedKiller") or char.Name):lower()
-        for _, arch in ipairs(killerArchetypes) do
-            if charRole:find(arch) then return true end
-        end
-        if GetGameValue(char, "IsKiller") == true or GetGameValue(char, "Mask") ~= nil or char:FindFirstChild("Carrying") then
-            return true
-        end
-        for _, item in ipairs(char:GetChildren()) do
-            if item:IsA("Tool") or item:IsA("Model") or item:IsA("MeshPart") then
-                local n = item.Name:lower()
-                if n:find("knife") or n:find("machete") or n:find("chainsaw") or n:find("cleaver") or n:find("axe") or n:find("hammer") or n:find("slasher") or n:find("scythe") or n:find("claws") or n:find("killerweapon") or n:find("blade") or n:find("sword") or n:find("sickle") or n:find("pipe") then
-                    return true
-                end
-            end
-        end
-    end
-
-    return false
+    return (k ~= nil and p == k)
 end
 
 local StaticLOSParams = RaycastParams.new()
@@ -1772,11 +1764,11 @@ local function ProcessEntities()
             if root and root:IsA("BasePart") then
                 local ok, rPos = pcall(function() return root.Position end)
                 if ok and rPos then
-                    -- STRICT SINGLE KILLER LOGIC: Only the true 1 killer is killer. All others are Player/Survivor!
-                    local isKiller = (p == killer) or IsTargetKiller(p)
+                    -- STRICT SINGLE KILLER LOGIC: Exactly 1 killer can EVER be true! All others are Player/Survivor!
+                    local isKiller = (killer ~= nil and p == killer)
 
                     -- Multi-Layer Combat Binding (Strictly Killer Only!)
-                    if isKiller or IsTargetKiller(p) then
+                    if isKiller then
                         BindCombatListeners(p, char)
                     end
 
@@ -2331,7 +2323,7 @@ MainTitle.Font = Enum.Font.GothamBold
 MainTitle.TextSize = 13
 MainTitle.TextXAlignment = Enum.TextXAlignment.Left
 
--- Header: Version 1.11 Pill Badge
+-- Header: Version 1.12 Pill Badge
 local VersionBadge = Instance.new("Frame", Header)
 VersionBadge.Name = "VersionBadge"
 VersionBadge.Size = UDim2.new(0, 44, 0, 18)
@@ -2341,7 +2333,7 @@ VersionBadge.BorderSizePixel = 0
 Instance.new("UICorner", VersionBadge).CornerRadius = UDim.new(0, 4)
 
 local VersionLabel = Instance.new("TextLabel", VersionBadge)
-VersionLabel.Text = "v1.11"
+VersionLabel.Text = "v1.12"
 VersionLabel.Size = UDim2.new(1, 0, 1, 0)
 VersionLabel.BackgroundTransparency = 1
 VersionLabel.TextColor3 = Color3.fromRGB(0, 240, 255)
@@ -3327,7 +3319,7 @@ CardMask         = PageIntel:Card("Hotline Mask Loadout", "NONE", C_PURPLE)
 CardGensLeft     = PageIntel:Card("Generator Objective Progress", "0 / 5 COMPLETE", C_CYAN)
 
 -- Settings & Maintenance
-PageSettings:Card("Build Architecture", "VERSION 1.11 // PRO REALITY SUITE", C_CYAN)
+PageSettings:Card("Build Architecture", "VERSION 1.12 // PRO REALITY SUITE", C_CYAN)
 
 PageSettings:Button("Force Re-index Map Objects", false, function()
     for _, b in pairs(State.Billboards) do if b then b:Destroy() end end
