@@ -1,8 +1,9 @@
 --[[
     ================================================================
-    606VD // PRO REALITY SUITE 2026
+    606VD // PRO REALITY SUITE 2026 // v1.11
     CONFIDENTIAL & PROPRIETARY // PRIVATE SOURCE BUILD
     SYSTEM: SMART SINGLE KILLER ENGINE + SMART GREAT FIX GEN + LUXURY ESP
+    VERSION: 1.11
     AESTHETIC: GTA 6 LUXURY (ZERO STROKES // STRICT ZERO EMOJIS)
     ================================================================
 ]]
@@ -26,6 +27,7 @@ local Camera = Services.Workspace.CurrentCamera
 local Config = {
     System = {
         Active = true,
+        Version = "1.11",
         MenuKey = Enum.KeyCode.RightControl,
         AltKey = Enum.KeyCode.V
     },
@@ -892,7 +894,7 @@ local function ProcessWorldESP()
     local myRoot = myChar and myChar:FindFirstChild("HumanoidRootPart")
     local myPos = myRoot and myRoot.Position
 
-    -- 1. Generator ESP (Renders across entire map up to 2500 studs!)
+    -- 1. Generator ESP (HIGHLIGHT ONLY: Pure 3D glowing chams across entire map, NO NAME TAG)
     local finished = 0
     for i = #State.Generators, 1, -1 do
         local gen = State.Generators[i]
@@ -902,69 +904,32 @@ local function ProcessWorldESP()
             local anchor = ResolveAnchorPart(gen)
             local targetHl = (gen:IsA("Model") and #gen:GetChildren() > 0) and gen or anchor
 
+            -- Ensure NO name / billboard tag is displayed on generators
+            local oldTag = gen:FindFirstChild("ESP_Tag", true) or (anchor and anchor:FindFirstChild("ESP_Tag"))
+            if oldTag then oldTag:Destroy() end
+
             if not Config.Visuals.GeneratorESP then
-                local oldTag = gen:FindFirstChild("ESP_Tag", true) or (anchor and anchor:FindFirstChild("ESP_Tag"))
-                if oldTag then oldTag:Destroy() end
                 RemoveHighlight(gen)
                 if anchor then RemoveHighlight(anchor) end
             elseif anchor and anchor:IsA("BasePart") then
                 local dist = myPos and math.floor((anchor.Position - myPos).Magnitude) or 0
                 local col
-                local text
 
                 if isDone then
                     finished = finished + 1
                     col = Color3.fromRGB(0, 235, 140) -- Vibrant emerald green
-                    text = "GEN [DONE]"
-                    if Config.Visuals.ShowDistance then
-                        text = string.format("GEN [DONE]\n<font size=\"8\">[%dM]</font>", dist)
-                    end
                 else
                     local cp = math.clamp(prog, 0, 100)
                     col = Config.Palette.RedDark:Lerp(Config.Palette.RedPrimary, cp / 100)
-                    text = string.format("GEN [%.1f%%]", prog)
-                    if Config.Visuals.ShowDistance then
-                        text = string.format("GEN [%.1f%%]\n<font size=\"8\">[%dM]</font>", prog, dist)
-                    end
                 end
 
-                local tag = anchor:FindFirstChild("ESP_Tag") or gen:FindFirstChild("ESP_Tag")
-                if not tag then
-                    tag = BuildTag(text, col, not isDone and Config.Visuals.GenProgressBars)
-                    tag.StudsOffset = Vector3.new(0, 3.5, 0)
-                    tag.Adornee = anchor
-                    tag.Parent = anchor
-                    table.insert(State.Billboards, tag)
-                else
-                    local lbl = tag:FindFirstChild("Label")
-                    if lbl and lbl.Text ~= text then
-                        lbl.Text = text
-                        lbl.TextColor3 = col
-                    end
-                    local bar = tag:FindFirstChild("BarBG")
-                    if isDone then
-                        if bar then bar.Visible = false end
-                    else
-                        if bar then
-                            bar.Visible = Config.Visuals.GenProgressBars
-                            local fill = bar:FindFirstChild("Fill")
-                            if fill then
-                                fill.Size = UDim2.new(math.clamp(prog / 100, 0, 1), 0, 1, 0)
-                                fill.BackgroundColor3 = col
-                            end
-                        end
-                    end
-                end
-
-                -- Full-map 3D glowing chams across entire match!
+                -- Full-map 3D glowing chams (Highlight Only, No Name Tag)
                 if dist <= 2500 and State.HighlightCount < Config.Visuals.MaxHighlights then
                     SafeHighlight(targetHl, col, false)
                 else
                     RemoveHighlight(targetHl)
                 end
             else
-                local oldTag = gen:FindFirstChild("ESP_Tag", true) or (anchor and anchor:FindFirstChild("ESP_Tag"))
-                if oldTag then oldTag:Destroy() end
                 RemoveHighlight(gen)
                 if anchor then RemoveHighlight(anchor) end
             end
@@ -974,49 +939,31 @@ local function ProcessWorldESP()
     end
     State.FinishedGens = finished
 
-    -- 2. Exit Gate ESP (3D Physical Highlight + Floating Billboard Tag across 9999 studs!)
+    -- 2. Exit Gate ESP (HIGHLIGHT ONLY: Pure 3D glowing chams on gate models across 9999 studs, NO NAME TAG)
     for _, gate in ipairs(State.WorldObjects.Gates) do
         if gate and gate.Parent then
             local anchor = ResolveAnchorPart(gate)
             local targetHl = (gate:IsA("Model") and #gate:GetChildren() > 0) and gate or anchor
 
+            -- Ensure NO name / billboard tag is displayed on exit gates
+            local oldTag = gate:FindFirstChild("ESP_Tag", true) or (anchor and anchor:FindFirstChild("ESP_Tag"))
+            if oldTag then oldTag:Destroy() end
+
             if not Config.Visuals.GateESP then
-                local oldTag = gate:FindFirstChild("ESP_Tag", true) or (anchor and anchor:FindFirstChild("ESP_Tag"))
-                if oldTag then oldTag:Destroy() end
                 RemoveHighlight(gate)
                 if anchor then RemoveHighlight(anchor) end
             elseif anchor and anchor:IsA("BasePart") then
                 local aPos = anchor.Position
                 local dist = myPos and math.floor((aPos - myPos).Magnitude) or 0
                 local color = Config.Palette.Gate
-                local text = "EXIT GATE"
-                if Config.Visuals.ShowDistance then
-                    text = string.format("EXIT GATE\n<font size=\"8\">[%dM]</font>", dist)
-                end
 
-                local tag = anchor:FindFirstChild("ESP_Tag") or gate:FindFirstChild("ESP_Tag")
-                if not tag then
-                    tag = BuildTag(text, color, false)
-                    tag.StudsOffset = Vector3.new(0, 3.5, 0)
-                    tag.Adornee = anchor
-                    tag.Parent = anchor
-                    table.insert(State.Billboards, tag)
-                else
-                    local lbl = tag:FindFirstChild("Label")
-                    if lbl and lbl.Text ~= text then
-                        lbl.Text = text
-                        lbl.TextColor3 = color
-                    end
-                end
-
+                -- Full-map 3D physical object glowing chams (Highlight Only, No Name Tag)
                 if dist <= 9999 and State.HighlightCount < Config.Visuals.MaxHighlights then
                     SafeHighlight(targetHl, color, false)
                 else
                     RemoveHighlight(targetHl)
                 end
             else
-                local oldTag = gate:FindFirstChild("ESP_Tag", true) or (anchor and anchor:FindFirstChild("ESP_Tag"))
-                if oldTag then oldTag:Destroy() end
                 RemoveHighlight(gate)
                 if anchor then RemoveHighlight(anchor) end
             end
@@ -2312,13 +2259,31 @@ TitleDiv.BorderSizePixel = 0
 
 local MainTitle = Instance.new("TextLabel", Header)
 MainTitle.Text = "VIOLENCE DISTRICT"
-MainTitle.Size = UDim2.new(0, 180, 0, 18)
+MainTitle.Size = UDim2.new(0, 145, 0, 18)
 MainTitle.Position = UDim2.new(0, 98, 0.5, -9)
 MainTitle.BackgroundTransparency = 1
 MainTitle.TextColor3 = C_WHITE
 MainTitle.Font = Enum.Font.GothamBold
 MainTitle.TextSize = 13
 MainTitle.TextXAlignment = Enum.TextXAlignment.Left
+
+-- Header: Version 1.11 Pill Badge
+local VersionBadge = Instance.new("Frame", Header)
+VersionBadge.Name = "VersionBadge"
+VersionBadge.Size = UDim2.new(0, 44, 0, 18)
+VersionBadge.Position = UDim2.new(0, 245, 0.5, -9)
+VersionBadge.BackgroundColor3 = Color3.fromRGB(24, 18, 30)
+VersionBadge.BorderSizePixel = 0
+Instance.new("UICorner", VersionBadge).CornerRadius = UDim.new(0, 4)
+
+local VersionLabel = Instance.new("TextLabel", VersionBadge)
+VersionLabel.Text = "v1.11"
+VersionLabel.Size = UDim2.new(1, 0, 1, 0)
+VersionLabel.BackgroundTransparency = 1
+VersionLabel.TextColor3 = Color3.fromRGB(0, 240, 255)
+VersionLabel.Font = Enum.Font.GothamBold
+VersionLabel.TextSize = 10
+VersionLabel.TextXAlignment = Enum.TextXAlignment.Center
 
 -- Header: Telemetry HUD Box
 local TelemetryBox = Instance.new("Frame", Header)
@@ -3186,7 +3151,7 @@ PageAuto:Slider("Great Hit Angle End", 108, 128, Config.Automation.HitAngleEnd, 
     Config.Automation.HitAngleEnd = v
 end)
 
--- Visuals Protocols: TAP-TO-TOGGLE FOR KILLER, PLAYER, GENERATOR, AND EXIT ONLY
+-- Visuals Protocols: TAP-TO-TOGGLE FOR KILLER, PLAYER, GENERATOR, AND GATE ONLY
 PageESP:Toggle("ESP Killer", Config.Visuals.KillerESP, function(v)
     Config.Visuals.KillerESP = v
     if not v then
@@ -3222,7 +3187,7 @@ PageESP:Toggle("ESP Player", Config.Visuals.SurvivorESP, function(v)
     end
 end, Config.Palette.Survivor)
 
-PageESP:Toggle("ESP Generator", Config.Visuals.GeneratorESP, function(v)
+PageESP:Toggle("ESP Generator (Highlight Only)", Config.Visuals.GeneratorESP, function(v)
     Config.Visuals.GeneratorESP = v
     if not v then
         for _, gen in ipairs(State.Generators) do
@@ -3238,7 +3203,7 @@ PageESP:Toggle("ESP Generator", Config.Visuals.GeneratorESP, function(v)
     end
 end, Config.Palette.Generator)
 
-PageESP:Toggle("ESP Exit", Config.Visuals.GateESP, function(v)
+PageESP:Toggle("ESP Gate (Highlight Only)", Config.Visuals.GateESP, function(v)
     Config.Visuals.GateESP = v
     if not v then
         for _, g in ipairs(State.WorldObjects.Gates) do
@@ -3272,9 +3237,8 @@ PageESP:Toggle("Master Visuals", Config.Visuals.MasterESP, function(v)
     end
 end)
 
-PageESP:Toggle("Display Distance [Studs]", Config.Visuals.ShowDistance, function(v)
+PageESP:Toggle("Display Player Distance", Config.Visuals.ShowDistance, function(v)
     Config.Visuals.ShowDistance = v
-    ProcessWorldESP()
     ProcessEntities()
 end)
 
@@ -3299,6 +3263,8 @@ CardMask         = PageIntel:Card("Hotline Mask Loadout", "NONE", C_PURPLE)
 CardGensLeft     = PageIntel:Card("Generator Objective Progress", "0 / 5 COMPLETE", C_CYAN)
 
 -- Settings & Maintenance
+PageSettings:Card("Build Architecture", "VERSION 1.11 // PRO REALITY SUITE", C_CYAN)
+
 PageSettings:Button("Force Re-index Map Objects", false, function()
     for _, b in pairs(State.Billboards) do if b then b:Destroy() end end
     table.clear(State.Billboards)
