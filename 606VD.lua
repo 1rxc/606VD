@@ -64,7 +64,6 @@ local Config = {
         SurvivorESP = true, -- Player ESP
         GeneratorESP = true,
         GateESP = true,     -- Exit ESP
-        HatchESP = true,
         HealthBars = true,
         GenProgressBars = true,
         ShowDistance = true,
@@ -92,8 +91,6 @@ local Config = {
         Hooked = Color3.fromRGB(255, 50, 70),
         Generator = Color3.fromRGB(255, 38, 58),
         Gate = Color3.fromRGB(240, 245, 255),
-        Window = Color3.fromRGB(70, 200, 255),
-        Hatch = Color3.fromRGB(255, 215, 0),
         VicePink = Color3.fromRGB(255, 38, 58),
         ViceCyan = Color3.fromRGB(255, 75, 95),
         VicePurple = Color3.fromRGB(180, 20, 38)
@@ -129,8 +126,7 @@ local State = {
     Animators = {},
     CombatBound = {},
     WorldObjects = {
-        Gates = {},
-        Hatches = {}
+        Gates = {}
     },
     BoundAnimators = {},
     ParryConnections = {},
@@ -462,16 +458,20 @@ local function IsGeneratorModel(obj)
     if obj:FindFirstAncestorOfClass("Humanoid") then return false end
     if obj:FindFirstAncestor("RagdollConstraints") or obj.Name:find("Ragdoll") then return false end
 
+    local name = obj.Name:lower()
+    if name:find("player") or name:find("character") or name:find("camera") or name:find("terrain") or name:find("baseplate") then
+        return false
+    end
+
     -- Avoid indexing sub-parts if the parent model is already recognized as a generator
     local parent = obj.Parent
     if parent and parent ~= Services.Workspace and parent:IsA("Model") then
         local pName = parent.Name:lower()
-        if pName == "generator" or pName:find("generator") or pName:match("^gen[%A%d_]") or pName:match("^gen_%d+") or pName:match("^gen%d+") then
+        if pName == "gen" or pName == "generator" or pName:find("generator") or pName:match("^gen[%A%d_]") or pName:match("^gen_%d+") or pName:match("^gen%d+") then
             return false
         end
     end
 
-    local name = obj.Name:lower()
     local pName = parent and parent.Name:lower() or ""
 
     -- 1. Direct Name Heuristics
@@ -483,7 +483,7 @@ local function IsGeneratorModel(obj)
     end
 
     -- 2. Parent Container Heuristics (e.g. Workspace.Generators.1 or Workspace.Map.Generators.GenA)
-    if pName == "generators" or pName == "gens" or pName:find("generator") then
+    if pName == "generators" or pName == "gens" or (pName:find("generator") and not pName:find("sound")) then
         if obj:IsA("Model") or obj:IsA("BasePart") then
             return true
         end
@@ -515,6 +515,58 @@ local function IsGeneratorModel(obj)
         local act = prompt.ActionText:lower()
         local objT = prompt.ObjectText:lower()
         if act:find("repair") or act:find("fix") or act:find("work") or objT:find("gen") or objT:find("generator") or objT:find("repair") then
+            return true
+        end
+    end
+
+    return false
+end
+
+local function IsExitGateModel(obj)
+    if not obj then return false end
+    if not (obj:IsA("Model") or obj:IsA("Folder") or obj:IsA("BasePart")) then return false end
+    if obj:FindFirstAncestorOfClass("Humanoid") then return false end
+    if obj:FindFirstAncestor("RagdollConstraints") or obj.Name:find("Ragdoll") then return false end
+
+    local name = obj.Name:lower()
+    if name:find("player") or name:find("character") or name:find("camera") or name:find("terrain") 
+        or name:find("locker") or name:find("closet") or name:find("window") or name:find("pallet") then
+        return false
+    end
+
+    -- Avoid indexing sub-parts if parent is already an exit gate model
+    local parent = obj.Parent
+    if parent and parent ~= Services.Workspace and parent:IsA("Model") then
+        local pName = parent.Name:lower()
+        if pName == "exitgate" or pName:find("exitgate") or pName:find("exit_gate") or pName:find("escapegate") then
+            return false
+        end
+    end
+
+    local pName = parent and parent.Name:lower() or ""
+
+    -- 1. Direct Name Match
+    if name == "exitgate" or name == "exit_gate" or name == "escapegate" or name == "escape_gate" 
+        or name == "gate" or name:find("exitgate") or name:find("exit_gate") or name:find("escapegate")
+        or (name:find("gate") and (name:find("exit") or name:find("escape") or name:find("door")))
+        or name == "exit" or name:match("^exit%d*") or name:match("^gate%d+") then
+        return true
+    end
+
+    -- 2. Parent Container Match (e.g. Workspace.ExitGates.Gate1)
+    if pName == "exitgates" or pName == "gates" or pName == "exits" or pName:find("exitgate") then
+        if obj:IsA("Model") or obj:IsA("BasePart") then
+            return true
+        end
+    end
+
+    -- 3. ProximityPrompt Match (Exit lever / gate switch)
+    local prompt = obj:FindFirstChildWhichIsA("ProximityPrompt", true)
+    if prompt then
+        local act = prompt.ActionText:lower()
+        local objT = prompt.ObjectText:lower()
+        if (act:find("open") or act:find("escape") or act:find("power") or act:find("pull") or act:find("unlock") or act:find("interact")) 
+            and (objT:find("gate") or objT:find("exit") or objT:find("door") or act:find("escape") or act:find("gate") or act:find("exit")) then
             return true
         end
     end
@@ -594,10 +646,13 @@ end
 local ESPFolder = Instance.new("Folder")
 ESPFolder.Name = "VD_ESP_Folder"
 pcall(function()
-    ESPFolder.Parent = game:GetService("CoreGui")
+    ESPFolder.Parent = Services.Workspace.CurrentCamera
 end)
 if not ESPFolder.Parent then
-    pcall(function() ESPFolder.Parent = Services.Workspace.CurrentCamera end)
+    pcall(function() ESPFolder.Parent = Services.Workspace end)
+end
+if not ESPFolder.Parent then
+    pcall(function() ESPFolder.Parent = game:GetService("CoreGui") end)
 end
 if not ESPFolder.Parent then
     pcall(function() ESPFolder.Parent = LocalPlayer:FindFirstChildOfClass("PlayerGui") end)
@@ -729,7 +784,7 @@ end
 --------------------------------------------------------------------------------
 
 local function IndexWorldObjects()
-    local gens, gates, hatches = {}, {}, {}
+    local gens, gates = {}, {}
     local checked = {}
 
     -- 1. Gather all potential map and objective containers
@@ -737,7 +792,7 @@ local function IndexWorldObjects()
     local containerNames = {
         "map", "currentmap", "mapfolder", "generators", "gens", 
         "interactables", "interactive", "objects", "props", "objectives", 
-        "game", "gamefolder", "environment", "spawns"
+        "gates", "exitgates", "exits", "game", "gamefolder", "environment", "spawns"
     }
 
     for _, child in ipairs(Services.Workspace:GetChildren()) do
@@ -761,35 +816,28 @@ local function IndexWorldObjects()
         if root and root.Parent then
             for _, obj in ipairs(root:GetDescendants()) do
                 if (obj:IsA("Model") or obj:IsA("Folder") or obj:IsA("BasePart")) and not checked[obj] then
-                    local name = obj.Name:lower()
                     if IsGeneratorModel(obj) then
                         checked[obj] = true
                         table.insert(gens, obj)
-                    elseif (name == "gate" or name:find("exitgate") or name:find("exit_gate") or name:find("door") or name:find("escape")) and not name:find("player") then
+                    elseif IsExitGateModel(obj) then
                         checked[obj] = true
                         table.insert(gates, obj)
-                    elseif (name == "hatch" or name == "trapdoor" or name:find("hatch")) and not name:find("player") then
-                        checked[obj] = true
-                        table.insert(hatches, obj)
                     end
                 end
             end
         end
     end
 
-    -- 3. Fallback: If 0 generators found, scan entire Workspace descendants
-    if #gens == 0 then
+    -- 3. Fallback: If 0 generators or 0 gates found, scan entire Workspace descendants
+    if #gens == 0 or #gates == 0 then
         for _, obj in ipairs(Services.Workspace:GetDescendants()) do
             if (obj:IsA("Model") or obj:IsA("Folder") or obj:IsA("BasePart")) and not checked[obj] then
-                if IsGeneratorModel(obj) then
+                if #gens == 0 and IsGeneratorModel(obj) then
                     checked[obj] = true
                     table.insert(gens, obj)
-                elseif #gates == 0 and (obj.Name:lower():find("gate") or obj.Name:lower():find("exit")) and not obj.Name:lower():find("player") then
+                elseif #gates == 0 and IsExitGateModel(obj) then
                     checked[obj] = true
                     table.insert(gates, obj)
-                elseif #hatches == 0 and (obj.Name:lower():find("hatch")) and not obj.Name:lower():find("player") then
-                    checked[obj] = true
-                    table.insert(hatches, obj)
                 end
             end
         end
@@ -797,7 +845,6 @@ local function IndexWorldObjects()
 
     State.Generators = gens
     State.WorldObjects.Gates = gates
-    State.WorldObjects.Hatches = hatches
 
     -- Periodic Dead Highlight Pruning
     local actualCount = 0
@@ -817,7 +864,7 @@ local function IndexWorldObjects()
 end
 
 --------------------------------------------------------------------------------
--- WORLD ESP PROCESSOR (CRASH-PROOFED)
+-- WORLD ESP PROCESSOR (CRASH-PROOFED // GENERATOR & EXIT GATE ONLY)
 --------------------------------------------------------------------------------
 
 local function ProcessWorldESP()
@@ -845,7 +892,7 @@ local function ProcessWorldESP()
     local myRoot = myChar and myChar:FindFirstChild("HumanoidRootPart")
     local myPos = myRoot and myRoot.Position
 
-    -- 1. Generators (Progress & Highlight - Renders across entire map up to 2500 studs!)
+    -- 1. Generator ESP (Renders across entire map up to 2500 studs!)
     local finished = 0
     for i = #State.Generators, 1, -1 do
         local gen = State.Generators[i]
@@ -927,61 +974,54 @@ local function ProcessWorldESP()
     end
     State.FinishedGens = finished
 
-    -- 2. Enhanced Object ESP Processor (3D PHYSICAL OBJECT HIGHLIGHT WITH BILLBOARD NAME)
-    local function ProcessObjectESPList(list, isEnabled, labelName, color, highlightRadius, showBillboard)
-        highlightRadius = highlightRadius or 9999
-        for _, obj in ipairs(list) do
-            if obj and obj.Parent then
-                local anchor = ResolveAnchorPart(obj)
-                local target = (obj:IsA("Model") and #obj:GetChildren() > 0) and obj or anchor
-                if anchor and anchor:IsA("BasePart") and isEnabled then
-                    local aPos = anchor.Position
-                    local dist = myPos and (aPos - myPos).Magnitude or 0
+    -- 2. Exit Gate ESP (3D Physical Highlight + Floating Billboard Tag across 9999 studs!)
+    for _, gate in ipairs(State.WorldObjects.Gates) do
+        if gate and gate.Parent then
+            local anchor = ResolveAnchorPart(gate)
+            local targetHl = (gate:IsA("Model") and #gate:GetChildren() > 0) and gate or anchor
 
-                    if showBillboard then
-                        local distM = math.floor(dist)
-                        local text = labelName
-                        if Config.Visuals.ShowDistance then
-                            text = string.format("%s\n<font size=\"8\">[%dM]</font>", labelName, distM)
-                        end
-
-                        local tag = anchor:FindFirstChild("ESP_Tag") or obj:FindFirstChild("ESP_Tag")
-                        if not tag then
-                            tag = BuildTag(text, color, false)
-                            tag.StudsOffset = Vector3.new(0, 3.2, 0)
-                            tag.Adornee = anchor
-                            tag.Parent = anchor
-                            table.insert(State.Billboards, tag)
-                        else
-                            local lbl = tag:FindFirstChild("Label")
-                            if lbl and lbl.Text ~= text then
-                                lbl.Text = text
-                                lbl.TextColor3 = color
-                            end
-                        end
-                    else
-                        local oldTag = obj:FindFirstChild("ESP_Tag", true) or (anchor and anchor:FindFirstChild("ESP_Tag"))
-                        if oldTag then oldTag:Destroy() end
-                    end
-
-                    if dist <= highlightRadius and State.HighlightCount < Config.Visuals.MaxHighlights then
-                        SafeHighlight(target, color, false)
-                    else
-                        RemoveHighlight(target)
-                    end
-                else
-                    local oldTag = obj:FindFirstChild("ESP_Tag", true) or (anchor and anchor:FindFirstChild("ESP_Tag"))
-                    if oldTag then oldTag:Destroy() end
-                    RemoveHighlight(obj)
-                    if anchor then RemoveHighlight(anchor) end
+            if not Config.Visuals.GateESP then
+                local oldTag = gate:FindFirstChild("ESP_Tag", true) or (anchor and anchor:FindFirstChild("ESP_Tag"))
+                if oldTag then oldTag:Destroy() end
+                RemoveHighlight(gate)
+                if anchor then RemoveHighlight(anchor) end
+            elseif anchor and anchor:IsA("BasePart") then
+                local aPos = anchor.Position
+                local dist = myPos and math.floor((aPos - myPos).Magnitude) or 0
+                local color = Config.Palette.Gate
+                local text = "EXIT GATE"
+                if Config.Visuals.ShowDistance then
+                    text = string.format("EXIT GATE\n<font size=\"8\">[%dM]</font>", dist)
                 end
+
+                local tag = anchor:FindFirstChild("ESP_Tag") or gate:FindFirstChild("ESP_Tag")
+                if not tag then
+                    tag = BuildTag(text, color, false)
+                    tag.StudsOffset = Vector3.new(0, 3.5, 0)
+                    tag.Adornee = anchor
+                    tag.Parent = anchor
+                    table.insert(State.Billboards, tag)
+                else
+                    local lbl = tag:FindFirstChild("Label")
+                    if lbl and lbl.Text ~= text then
+                        lbl.Text = text
+                        lbl.TextColor3 = color
+                    end
+                end
+
+                if dist <= 9999 and State.HighlightCount < Config.Visuals.MaxHighlights then
+                    SafeHighlight(targetHl, color, false)
+                else
+                    RemoveHighlight(targetHl)
+                end
+            else
+                local oldTag = gate:FindFirstChild("ESP_Tag", true) or (anchor and anchor:FindFirstChild("ESP_Tag"))
+                if oldTag then oldTag:Destroy() end
+                RemoveHighlight(gate)
+                if anchor then RemoveHighlight(anchor) end
             end
         end
     end
-
-    -- Exit Gates & Escape Hatches (Physical 3D highlight + floating billboard tag!)
-    ProcessObjectESPList(State.WorldObjects.Gates, Config.Visuals.GateESP, "EXIT GATE", Config.Palette.Gate, 9999, true)
-    ProcessObjectESPList(State.WorldObjects.Hatches, Config.Visuals.HatchESP, "HATCH", Config.Palette.Hatch, 9999, true)
 end
 
 --------------------------------------------------------------------------------
@@ -1730,7 +1770,7 @@ local function ProcessEntities()
                 local ok, rPos = pcall(function() return root.Position end)
                 if ok and rPos then
                     -- STRICT SINGLE KILLER LOGIC: Only the true 1 killer is killer. All others are Player/Survivor!
-                    local isKiller = (p == killer)
+                    local isKiller = (p == killer) or IsTargetKiller(p)
 
                     -- Multi-Layer Combat Binding (Strictly Killer Only!)
                     if isKiller or IsTargetKiller(p) then
@@ -3142,8 +3182,8 @@ PageAuto:Slider("Great Hit Angle End", 108, 128, Config.Automation.HitAngleEnd, 
     Config.Automation.HitAngleEnd = v
 end)
 
--- Visuals Protocols: TAP-TO-TOGGLE BUTTONS FOR KILLER, PLAYER, GENERATOR, AND EXIT
-local SetKillerToggle = PageESP:Toggle("ESP Killer", Config.Visuals.KillerESP, function(v)
+-- Visuals Protocols: TAP-TO-TOGGLE FOR KILLER, PLAYER, GENERATOR, AND EXIT ONLY
+PageESP:Toggle("ESP Killer", Config.Visuals.KillerESP, function(v)
     Config.Visuals.KillerESP = v
     if not v then
         if State.ActiveKiller and State.ActiveKiller.Character then
@@ -3152,25 +3192,29 @@ local SetKillerToggle = PageESP:Toggle("ESP Killer", Config.Visuals.KillerESP, f
             RemoveHighlight(State.ActiveKiller.Character)
         end
         for _, p in ipairs(Services.Players:GetPlayers()) do
-            if p == State.ActiveKiller and p.Character then
+            if (p == State.ActiveKiller or IsTargetKiller(p)) and p.Character then
                 local tag = p.Character:FindFirstChild("ESP_Tag", true)
                 if tag then tag:Destroy() end
                 RemoveHighlight(p.Character)
             end
         end
+    else
+        ProcessEntities()
     end
 end, Config.Palette.Killer)
 
-local SetPlayerToggle = PageESP:Toggle("ESP Player", Config.Visuals.SurvivorESP, function(v)
+PageESP:Toggle("ESP Player", Config.Visuals.SurvivorESP, function(v)
     Config.Visuals.SurvivorESP = v
     if not v then
         for _, p in ipairs(Services.Players:GetPlayers()) do
-            if p ~= LocalPlayer and p ~= State.ActiveKiller and p.Character then
+            if p ~= LocalPlayer and p ~= State.ActiveKiller and not IsTargetKiller(p) and p.Character then
                 local tag = p.Character:FindFirstChild("ESP_Tag", true)
                 if tag then tag:Destroy() end
                 RemoveHighlight(p.Character)
             end
         end
+    else
+        ProcessEntities()
     end
 end, Config.Palette.Survivor)
 
@@ -3181,7 +3225,12 @@ PageESP:Toggle("ESP Generator", Config.Visuals.GeneratorESP, function(v)
             local tag = gen:FindFirstChild("ESP_Tag", true)
             if tag then tag:Destroy() end
             RemoveHighlight(gen)
+            local a = State.AnchorCache[gen]
+            if a then RemoveHighlight(a) end
         end
+    else
+        IndexWorldObjects()
+        ProcessWorldESP()
     end
 end, Config.Palette.Generator)
 
@@ -3192,7 +3241,12 @@ PageESP:Toggle("ESP Exit", Config.Visuals.GateESP, function(v)
             local tag = g:FindFirstChild("ESP_Tag", true)
             if tag then tag:Destroy() end
             RemoveHighlight(g)
+            local a = State.AnchorCache[g]
+            if a then RemoveHighlight(a) end
         end
+    else
+        IndexWorldObjects()
+        ProcessWorldESP()
     end
 end, Config.Palette.Gate)
 
@@ -3207,30 +3261,18 @@ PageESP:Toggle("Master Visuals", Config.Visuals.MasterESP, function(v)
             for obj, b in pairs(State.Boxes) do if b then pcall(function() b:Destroy() end) end end
             table.clear(State.Boxes)
         end
+    else
+        IndexWorldObjects()
+        ProcessWorldESP()
+        ProcessEntities()
     end
 end)
 
--- Dedicated Action Buttons for Instant One-Tap Toggling
-PageESP:Button("TOGGLE ESP KILLER [ON / OFF]", false, function()
-    SetKillerToggle(not Config.Visuals.KillerESP)
+PageESP:Toggle("Display Distance [Studs]", Config.Visuals.ShowDistance, function(v)
+    Config.Visuals.ShowDistance = v
+    ProcessWorldESP()
+    ProcessEntities()
 end)
-
-PageESP:Button("TOGGLE ESP PLAYER [ON / OFF]", false, function()
-    SetPlayerToggle(not Config.Visuals.SurvivorESP)
-end)
-
-PageESP:Toggle("Escape Hatch", Config.Visuals.HatchESP, function(v)
-    Config.Visuals.HatchESP = v
-    if not v then
-        for _, obj in ipairs(State.WorldObjects.Hatches) do
-            local tag = obj:FindFirstChild("ESP_Tag", true)
-            if tag then tag:Destroy() end
-            RemoveHighlight(obj)
-        end
-    end
-end)
-
-PageESP:Toggle("Display Range [Studs]", Config.Visuals.ShowDistance, function(v) Config.Visuals.ShowDistance = v end)
 
 -- Threat Radar Protocols
 PageThreat:Toggle("Proximity Danger Sensor", Config.Radar.Enabled, function(v) Config.Radar.Enabled = v end)
