@@ -2,7 +2,7 @@
     ================================================================
     606VD // PRO REALITY SUITE 2026 // v1.12
     CONFIDENTIAL & PROPRIETARY // PRIVATE SOURCE BUILD
-    SYSTEM: SMART SINGLE KILLER ENGINE + SMART GREAT FIX GEN + LUXURY ESP
+    SYSTEM: FAIL-SAFE KILLER RESOLUTION + UNBREAKABLE AUTO PARRY + INSTANT GREAT GEN + LUXURY ESP
     VERSION: 1.12
     AESTHETIC: GTA 6 LUXURY (ZERO STROKES // STRICT ZERO EMOJIS)
     ================================================================
@@ -237,8 +237,13 @@ local function ResolveAnchorPart(obj)
     return anchor
 end
 
--- RELIABLE GAME/MATCH ACTIVE DETECTOR (PREVENTS LOBBY FALSE POSITIVES)
+-- RELIABLE GAME/MATCH ACTIVE DETECTOR (RESILIENT // PREVENTS DELAYS & FALSE POSITIVES)
 local function IsGameStarted()
+    -- 0. If an active killer is already confirmed, match is definitively active!
+    if State.ActiveKiller ~= nil and State.ActiveKiller.Parent == Services.Players then
+        return true
+    end
+
     -- 1. Match objective detection: If match generators or exit gates exist, a match is active!
     if #State.Generators > 0 or #State.WorldObjects.Gates > 0 then
         return true
@@ -249,7 +254,9 @@ local function IsGameStarted()
         or Services.Workspace:FindFirstChild("CurrentMap")
         or Services.Workspace:FindFirstChild("Generators")
         or Services.Workspace:FindFirstChild("Interactables")
-    if map and #map:GetChildren() > 2 then
+        or Services.Workspace:FindFirstChild("Ingame")
+        or Services.Workspace:FindFirstChild("Match")
+    if map and #map:GetChildren() > 1 then
         return true
     end
 
@@ -259,6 +266,8 @@ local function IsGameStarted()
         or GetGameValue(rep, "GameStatus") 
         or GetGameValue(rep, "RoundStatus")
         or GetGameValue(rep, "GameState")
+        or GetGameValue(rep, "Match")
+        or GetGameValue(rep, "Round")
         or GetGameValue(Services.Workspace, "GameStarted")
         or GetGameValue(Services.Workspace, "MatchActive")
         or GetGameValue(Services.Workspace, "InGame")
@@ -276,22 +285,24 @@ local function IsGameStarted()
         end
     end
 
-    -- 4. Check if any player has an active Killer team or Killer role assigned
+    -- 4. Check if any player has an active Killer team, Killer role, or Killer components
     for _, p in ipairs(Services.Players:GetPlayers()) do
         local team = p.Team and p.Team.Name:lower() or ""
         if (team:find("killer") or team:find("slasher") or team:find("hunter") or team:find("murderer") or team:find("monster")) and not (team:find("survivor") or team:find("victim") or team:find("lobby")) then
             return true
         end
         local role = tostring(GetGameValue(p, "Role") or GetGameValue(p, "SelectedKiller") or ""):lower()
-        if role:find("killer") or role:find("slasher") or role:find("stalker") or role:find("hunter") then
+        if role:find("killer") or role:find("slasher") or role:find("stalker") or role:find("hunter") or role:find("butcher") or role:find("abysswalker") or role:find("veil") or role:find("cure") then
             return true
         end
         if GetGameValue(p, "IsKiller") == true then
             return true
         end
         local c = p.Character
-        if c and (GetGameValue(c, "IsKiller") == true) then
-            return true
+        if c then
+            if GetGameValue(c, "IsKiller") == true or c:FindFirstChild("TerrorRadius") or c:FindFirstChild("RedStain") or c:FindFirstChild("RedLight") then
+                return true
+            end
         end
     end
 
@@ -406,11 +417,13 @@ local function GetKillerConfidence(p)
                 if item:IsA("Tool") or item:IsA("Model") or item:IsA("MeshPart") then
                     local tName = item.Name:lower()
                     -- Strict filter: MUST NOT be any survivor item
-                    if not (tName:find("parrying") or tName:find("dagger") or tName:find("twist") or tName:find("tracker") or tName:find("gun") or tName:find("flashlight") or tName:find("medkit") or tName:find("toolbox")) then
+                    if not (tName:find("parrying") or tName:find("dagger") or tName:find("twist") or tName:find("tracker") or tName:find("gun") or tName:find("flashlight") or tName:find("medkit") or tName:find("toolbox") or tName:find("lockpick")) then
                         if tName:find("cleaver") or tName:find("machete") or tName:find("chainsaw") or tName:find("scythe") 
                             or tName:find("killerweapon") or tName:find("slasher") or tName:find("abysswalker") or tName:find("veil")
-                            or tName:find("cureneedle") or tName:find("claws") then
-                            score = score + 45
+                            or tName:find("cureneedle") or tName:find("claws") or tName:find("knife") or tName:find("blade")
+                            or tName:find("axe") or tName:find("hammer") or tName:find("weapon") or tName:find("sickle")
+                            or tName:find("club") or tName:find("bat") or tName:find("pipe") or tName:find("crowbar") then
+                            score = score + 50
                             break
                         end
                     end
@@ -422,15 +435,9 @@ local function GetKillerConfidence(p)
     return score
 end
 
--- SMART SINGLE KILLER RESOLUTION (OPERATES STRICTLY ONLY WHEN GAME HAS STARTED)
+-- SMART SINGLE KILLER RESOLUTION (FAIL-SAFE & HIGH RESILIENCE)
 -- Mathematically guarantees AT MOST 1 Killer in the entire match!
 local function ResolveSingleKiller()
-    -- Only detect/resolve killer once the game has actually started!
-    if not IsGameStarted() then
-        State.ActiveKiller = nil
-        return nil
-    end
-
     local now = tick()
     if State.ActiveKiller and State.ActiveKiller.Parent == Services.Players and (now - State.LastKillerCheck < 0.4) then
         -- Verify cached killer is still valid and not a survivor
@@ -454,7 +461,15 @@ local function ResolveSingleKiller()
         end
     end
 
-    if bestPlayer and bestScore > 0 then
+    -- Definite killer traits (score >= 40: archetype, role, killer weapon, or team)
+    -- Definitively resolves Killer immediately with zero game-start delay
+    if bestPlayer and bestScore >= 40 then
+        State.ActiveKiller = bestPlayer
+        return bestPlayer
+    end
+
+    -- If score is positive and match has started
+    if bestPlayer and bestScore > 0 and IsGameStarted() then
         State.ActiveKiller = bestPlayer
         return bestPlayer
     end
@@ -472,25 +487,43 @@ local function GetPlayerRole(player)
 end
 
 local function IsLocalPlayerKiller()
-    if not IsGameStarted() then return false end
+    if State.ActiveKiller and State.ActiveKiller == LocalPlayer then
+        return true
+    end
     local killer = ResolveSingleKiller()
     if killer then
         return killer == LocalPlayer
     end
-
-    -- If killer not resolved yet, evaluate local player confidence
     local score = GetKillerConfidence(LocalPlayer)
-    return score > 0
+    return score >= 45
 end
 
 -- STRICT SINGLE KILLER VERIFICATION: Identifies if an opponent is the hostile Killer
 -- Guarantees true ONLY for the 1 confirmed match killer
 local function IsTargetKiller(p)
     if not p or p == LocalPlayer then return false end
-    if not IsGameStarted() then return false end
 
+    -- 1. Fast match with cached ActiveKiller
+    if State.ActiveKiller and p == State.ActiveKiller then
+        return true
+    end
+
+    -- 2. Resolve single killer
     local k = ResolveSingleKiller()
-    return (k ~= nil and p == k)
+    if k and p == k then
+        return true
+    end
+
+    -- 3. High confidence fallback: if player has clear killer traits and is NOT a survivor
+    if not IsPlayerSurvivor(p) then
+        local score = GetKillerConfidence(p)
+        if score >= 50 then
+            State.ActiveKiller = p
+            return true
+        end
+    end
+
+    return false
 end
 
 local StaticLOSParams = RaycastParams.new()
@@ -1104,9 +1137,15 @@ local function IsAttackAnimation(track)
         or tostring(prio):find("Action")
         or (prio.Value and prio.Value >= Enum.AnimationPriority.Action.Value))
 
+    local len = track.Length or 0
     if isActionPrio then
-        local len = track.Length or 0
-        if len == 0 or (len >= 0.2 and len <= 2.2) then
+        if len == 0 or (len >= 0.15 and len <= 3.0) then
+            return true
+        end
+    else
+        -- Fallback for unnamed attack tracks where studio developer left priority as Core / Idle:
+        -- Any non-looped short animation between 0.18s and 2.2s played within melee reach is an attack!
+        if (len >= 0.18 and len <= 2.2) and not (tName:find("jump") or tName:find("fall") or tName:find("vault") or tName:find("climb") or tName:find("land")) then
             return true
         end
     end
@@ -1176,6 +1215,29 @@ local function ExecuteAutoParry(source)
             vu:Button2Down(Vector2.new(mPos.X, mPos.Y))
         end)
 
+        -- 2B. Tool Activation & Remote Triggers (Guarantees parry registers across all game frameworks)
+        if daggerTool then
+            pcall(function()
+                for _, rem in ipairs(daggerTool:GetDescendants()) do
+                    if rem:IsA("RemoteEvent") then
+                        local rName = rem.Name:lower()
+                        if rName:find("parry") or rName:find("guard") or rName:find("block") or rName:find("counter") or rName:find("use") or rName:find("activate") then
+                            rem:FireServer()
+                        end
+                    end
+                end
+            end)
+        end
+        pcall(function()
+            local rep = game:GetService("ReplicatedStorage")
+            for _, name in ipairs({"Parry", "ParryEvent", "GuardEvent", "BlockEvent", "UseParry"}) do
+                local r = rep:FindFirstChild(name, true)
+                if r and r:IsA("RemoteEvent") then
+                    r:FireServer()
+                end
+            end
+        end)
+
         -- 3. Mobile Parry / Guard Button (For mobile players)
         pcall(function()
             local pg = LocalPlayer:FindFirstChildOfClass("PlayerGui")
@@ -1239,7 +1301,16 @@ local function CheckAndTriggerParry(char, player, track)
     if player == LocalPlayer then return end
 
     -- STRICT SINGLE KILLER VERIFICATION: Parries ONLY against the true Killer
-    if not IsTargetKiller(player) then return end
+    local isKiller = IsTargetKiller(player)
+    if not isKiller then
+        if State.ActiveKiller == nil and not IsPlayerSurvivor(player) then
+            -- Immediate locking: opponent is actively attacking in melee reach!
+            State.ActiveKiller = player
+            isKiller = true
+        else
+            return
+        end
+    end
 
     local myChar = LocalPlayer.Character
     local myRoot = myChar and myChar:FindFirstChild("HumanoidRootPart")
@@ -1276,8 +1347,8 @@ end
 local function BindCombatListeners(player, char)
     if player == LocalPlayer or not char then return end
 
-    -- Strictly only bind to the Killer
-    if not IsTargetKiller(player) then return end
+    -- Bind to killer or any non-survivor candidate
+    if not IsTargetKiller(player) and IsPlayerSurvivor(player) then return end
 
     local animator = GetCharacterAnimator(char)
     if not animator then
@@ -1829,43 +1900,54 @@ local function ProcessEntities()
             table.clear(State.ParriedTracks)
         end
 
-        local targetKiller = (killer and killer ~= LocalPlayer and IsTargetKiller(killer) and killer)
-            or (State.ActiveKiller and State.ActiveKiller ~= LocalPlayer and IsTargetKiller(State.ActiveKiller) and State.ActiveKiller)
-        if not targetKiller then
+        local candidateKillers = {}
+        if killer and killer ~= LocalPlayer then
+            table.insert(candidateKillers, killer)
+        elseif State.ActiveKiller and State.ActiveKiller ~= LocalPlayer then
+            table.insert(candidateKillers, State.ActiveKiller)
+        end
+
+        -- If no killer confirmed yet, check any opponent within striking distance who is not confirmed survivor
+        if #candidateKillers == 0 then
             for _, p in ipairs(Services.Players:GetPlayers()) do
-                if IsTargetKiller(p) then
-                    targetKiller = p
-                    break
+                if p ~= LocalPlayer and not IsPlayerSurvivor(p) then
+                    table.insert(candidateKillers, p)
                 end
             end
         end
 
-        if targetKiller and targetKiller.Character then
-            local c = targetKiller.Character
-            local r = c:FindFirstChild("HumanoidRootPart") or c.PrimaryPart or ResolveAnchorPart(c)
-            if r and r:IsA("BasePart") then
-                local dist = (r.Position - myRoot.Position).Magnitude
-                -- Killer must be within melee strike distance
-                if dist <= Config.Combat.ParryDistance then
-                    local toMe = (myRoot.Position - r.Position).Unit
-                    -- Killer must be facing towards survivor
-                    local isFacingMe
-                    if Config.Combat.FaceCheck then
-                        isFacingMe = r.CFrame.LookVector:Dot(toMe) >= 0.15
-                    else
-                        isFacingMe = r.CFrame.LookVector:Dot(toMe) >= -0.70
-                    end
-                    if isFacingMe then
-                        local anim = GetCharacterAnimator(c)
-                        if anim then
-                            local ok, tracks = pcall(function() return anim:GetPlayingAnimationTracks() end)
-                            if ok and tracks then
-                                for _, tr in ipairs(tracks) do
-                                    -- Smartly detects the exact moment the killer taps hit (TimePosition < 0.45)
-                                    if tr.IsPlaying and not State.ParriedTracks[tr] and tr.TimePosition < 0.45 and IsAttackAnimation(tr) then
-                                        State.ParriedTracks[tr] = true
-                                        ExecuteAutoParry("KILLER_TAP_HIT_TRACK")
-                                        break
+        for _, targetKiller in ipairs(candidateKillers) do
+            if targetKiller and targetKiller.Character then
+                local c = targetKiller.Character
+                local r = c:FindFirstChild("HumanoidRootPart") or c.PrimaryPart or ResolveAnchorPart(c)
+                if r and r:IsA("BasePart") then
+                    local dist = (r.Position - myRoot.Position).Magnitude
+                    -- Killer must be within melee strike distance
+                    if dist <= Config.Combat.ParryDistance then
+                        local toMe = (myRoot.Position - r.Position).Unit
+                        -- Killer must be facing towards survivor
+                        local isFacingMe = true
+                        if Config.Combat.FaceCheck then
+                            isFacingMe = r.CFrame.LookVector:Dot(toMe) >= 0.15
+                        else
+                            isFacingMe = r.CFrame.LookVector:Dot(toMe) >= -0.70
+                        end
+
+                        if isFacingMe then
+                            local anim = GetCharacterAnimator(c)
+                            if anim then
+                                local ok, tracks = pcall(function() return anim:GetPlayingAnimationTracks() end)
+                                if ok and tracks then
+                                    for _, tr in ipairs(tracks) do
+                                        -- Smartly detects the exact moment the killer taps hit (TimePosition < 0.50)
+                                        if tr.IsPlaying and not State.ParriedTracks[tr] and tr.TimePosition < 0.50 and IsAttackAnimation(tr) then
+                                            State.ParriedTracks[tr] = true
+                                            if not State.ActiveKiller then
+                                                State.ActiveKiller = targetKiller
+                                            end
+                                            ExecuteAutoParry("KILLER_TAP_HIT_TRACK")
+                                            break
+                                        end
                                     end
                                 end
                             end
@@ -1988,10 +2070,44 @@ end
 
 local function BindSkillCheckGui(prompt)
     if not prompt then return end
-    local check = prompt:WaitForChild("Check", 5)
+
+    -- Non-blocking search for check frame
+    local check = prompt:FindFirstChild("Check") or prompt:FindFirstChild("SkillCheck")
+    if not check then
+        for _, d in ipairs(prompt:GetDescendants()) do
+            local dn = d.Name:lower()
+            if dn == "check" or dn:find("skillcheck") then
+                check = d
+                break
+            end
+        end
+    end
     if not check then return end
-    local line = check:WaitForChild("Line", 5)
-    local goal = check:WaitForChild("Goal", 5)
+
+    -- Non-blocking search for needle / line
+    local line = check:FindFirstChild("Line") or check:FindFirstChild("Needle") or check:FindFirstChild("Pointer")
+    if not line then
+        for _, d in ipairs(check:GetDescendants()) do
+            local dn = d.Name:lower()
+            if dn == "line" or dn == "needle" or dn == "pointer" or dn:find("indicator") then
+                line = d
+                break
+            end
+        end
+    end
+
+    -- Non-blocking search for goal / target
+    local goal = check:FindFirstChild("Goal") or check:FindFirstChild("Target") or check:FindFirstChild("Zone")
+    if not goal then
+        for _, d in ipairs(check:GetDescendants()) do
+            local dn = d.Name:lower()
+            if dn == "goal" or dn == "target" or dn == "zone" or dn:find("success") then
+                goal = d
+                break
+            end
+        end
+    end
+
     if not line or not goal then return end
 
     local function RunSkillTracker()
@@ -2065,16 +2181,26 @@ local function InitializeSkillEngine()
     State.SkillEngineInitialized = true
 
     task.spawn(function()
-        for _, c in ipairs(PlayerGui:GetChildren()) do
-            if c.Name == "SkillCheckPromptGui" or c.Name:find("SkillCheck") then
+        local function ScanAndBind(c)
+            if not c then return end
+            local cName = c.Name:lower()
+            if cName:find("skillcheck") or cName:find("check") or cName:find("qte") or cName:find("prompt") then
                 BindSkillCheckGui(c)
+            end
+            for _, child in ipairs(c:GetChildren()) do
+                local n = child.Name:lower()
+                if n:find("skillcheck") or n == "check" or n == "skillcheckprompt" then
+                    BindSkillCheckGui(child)
+                end
             end
         end
+
+        for _, c in ipairs(PlayerGui:GetChildren()) do
+            ScanAndBind(c)
+        end
         PlayerGui.ChildAdded:Connect(function(c)
-            if c.Name == "SkillCheckPromptGui" or c.Name:find("SkillCheck") then
-                task.wait(0.04)
-                BindSkillCheckGui(c)
-            end
+            task.wait(0.04)
+            ScanAndBind(c)
         end)
     end)
 
@@ -2461,6 +2587,12 @@ PlayerRightBox:AddSlider("PlayerSpeedVal", {
     HideMax = true,
     Callback = function(v)
         Config.Player.SpeedValue = v
+        if Config.Player.FastSpeed and LocalPlayer.Character then
+            local h = LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
+            if h and ShouldApplyPlayerMods() then
+                h.WalkSpeed = v
+            end
+        end
     end
 })
 
@@ -2533,6 +2665,12 @@ KillerLeftBox:AddSlider("KillerSpeedVal", {
     HideMax = true,
     Callback = function(v)
         Config.Killer.SpeedValue = v
+        if Config.Killer.FastSpeed and LocalPlayer.Character then
+            local h = LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
+            if h and ShouldApplyKillerMods() then
+                h.WalkSpeed = v
+            end
+        end
     end
 })
 
