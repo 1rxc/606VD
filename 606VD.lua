@@ -86,11 +86,11 @@ local Config = {
         RedPrimary = Color3.fromRGB(255, 38, 58),
         RedDark = Color3.fromRGB(180, 20, 38),
         RedGlow = Color3.fromRGB(255, 75, 95),
-        Killer = Color3.fromRGB(255, 38, 58),
-        Survivor = Color3.fromRGB(0, 240, 255),
-        Injured = Color3.fromRGB(255, 180, 30),
-        Downed = Color3.fromRGB(255, 90, 10),
-        Hooked = Color3.fromRGB(255, 50, 70),
+        Killer = Color3.fromRGB(255, 38, 58),   -- Pure Vibrant Red (Killer Only)
+        Survivor = Color3.fromRGB(0, 240, 255), -- Pure Vibrant Cyan (Player Only)
+        Injured = Color3.fromRGB(0, 240, 255),
+        Downed = Color3.fromRGB(0, 240, 255),
+        Hooked = Color3.fromRGB(0, 240, 255),
         Generator = Color3.fromRGB(255, 38, 58),
         Gate = Color3.fromRGB(240, 245, 255),
         VicePink = Color3.fromRGB(255, 38, 58),
@@ -237,9 +237,75 @@ local function ResolveAnchorPart(obj)
     return anchor
 end
 
--- SMART SINGLE KILLER RESOLUTION (GUARANTEES EXACTLY 1 KILLER IN GAME)
--- If a player is not the 1 killer, they are strictly treated as a player/survivor!
+-- RELIABLE GAME/MATCH ACTIVE DETECTOR (PREVENTS LOBBY FALSE POSITIVES)
+local function IsGameStarted()
+    -- 1. Match objective detection: If match generators or exit gates exist, a match is active!
+    if #State.Generators > 0 or #State.WorldObjects.Gates > 0 then
+        return true
+    end
+
+    -- 2. Check if a map folder with match objectives is spawned
+    local map = Services.Workspace:FindFirstChild("Map") 
+        or Services.Workspace:FindFirstChild("CurrentMap")
+        or Services.Workspace:FindFirstChild("Generators")
+        or Services.Workspace:FindFirstChild("Interactables")
+    if map and #map:GetChildren() > 2 then
+        return true
+    end
+
+    -- 3. Check ReplicatedStorage / Workspace match attributes and values
+    local rep = game:GetService("ReplicatedStorage")
+    local matchStatus = GetGameValue(rep, "Status") 
+        or GetGameValue(rep, "GameStatus") 
+        or GetGameValue(rep, "RoundStatus")
+        or GetGameValue(rep, "GameState")
+        or GetGameValue(Services.Workspace, "GameStarted")
+        or GetGameValue(Services.Workspace, "MatchActive")
+        or GetGameValue(Services.Workspace, "InGame")
+
+    if matchStatus ~= nil then
+        if typeof(matchStatus) == "boolean" then
+            return matchStatus
+        elseif typeof(matchStatus) == "string" then
+            local ms = matchStatus:lower()
+            if ms:find("lobby") or ms:find("intermission") or ms:find("waiting") or ms:find("queue") then
+                return false
+            elseif ms:find("start") or ms:find("in progress") or ms:find("play") or ms:find("active") or ms:find("match") or ms:find("hunt") or ms:find("round") then
+                return true
+            end
+        end
+    end
+
+    -- 4. Check if any player has an active Killer team or Killer role assigned
+    for _, p in ipairs(Services.Players:GetPlayers()) do
+        local team = p.Team and p.Team.Name:lower() or ""
+        if (team:find("killer") or team:find("slasher") or team:find("hunter") or team:find("murderer") or team:find("monster")) and not (team:find("survivor") or team:find("victim") or team:find("lobby")) then
+            return true
+        end
+        local role = tostring(GetGameValue(p, "Role") or GetGameValue(p, "SelectedKiller") or ""):lower()
+        if role:find("killer") or role:find("slasher") or role:find("stalker") or role:find("hunter") then
+            return true
+        end
+        if GetGameValue(p, "IsKiller") == true or GetGameValue(p, "Mask") ~= nil then
+            return true
+        end
+        local c = p.Character
+        if c and (GetGameValue(c, "IsKiller") == true or GetGameValue(c, "Mask") ~= nil or c:FindFirstChild("Mask")) then
+            return true
+        end
+    end
+
+    return false
+end
+
+-- SMART SINGLE KILLER RESOLUTION (OPERATES STRICTLY ONLY WHEN GAME HAS STARTED)
 local function ResolveSingleKiller()
+    -- Only detect/resolve killer once the game has actually started!
+    if not IsGameStarted() then
+        State.ActiveKiller = nil
+        return nil
+    end
+
     local now = tick()
     if State.ActiveKiller and State.ActiveKiller.Parent == Services.Players and (now - State.LastKillerCheck < 0.4) then
         return State.ActiveKiller
@@ -256,7 +322,7 @@ local function ResolveSingleKiller()
             local hasMask = GetGameValue(State.ActiveKiller, "Mask") or GetGameValue(cChar, "Mask") or cChar:FindFirstChild("Mask")
             local isCarrying = cChar:FindFirstChild("Carrying") or GetGameValue(cChar, "IsCarrying")
 
-            if team:find("survivor") or team:find("victim") then
+            if team:find("survivor") or team:find("victim") or team:find("lobby") then
                 State.ActiveKiller = nil
             elseif team:find("killer") or team:find("slasher") or role:find("killer") or isKAttr == true or hasMask or isCarrying then
                 return State.ActiveKiller
@@ -265,7 +331,7 @@ local function ResolveSingleKiller()
                 for _, item in ipairs(cChar:GetChildren()) do
                     if item:IsA("Tool") or item:IsA("Model") or item:IsA("MeshPart") then
                         local n = item.Name:lower()
-                        if n:find("knife") or n:find("machete") or n:find("chainsaw") or n:find("cleaver") or n:find("axe") or n:find("hammer") or n:find("bat") or n:find("weapon") or n:find("slasher") or n:find("scythe") or n:find("claws") or n:find("blade") or n:find("pipe") or n:find("sickle") then
+                        if n:find("knife") or n:find("machete") or n:find("chainsaw") or n:find("cleaver") or n:find("axe") or n:find("hammer") or n:find("bat") or n:find("killerweapon") or n:find("slasher") or n:find("scythe") or n:find("claws") or n:find("blade") or n:find("pipe") or n:find("sickle") then
                             hasWeapon = true; break
                         end
                     end
@@ -275,10 +341,10 @@ local function ResolveSingleKiller()
         end
     end
 
-    -- Priority 1: Definitive Killer/Slasher team
+    -- Priority 1: Definitive Killer/Slasher team (strictly non-survivor, non-lobby)
     for _, p in ipairs(Services.Players:GetPlayers()) do
         local team = p.Team and p.Team.Name:lower() or ""
-        if (team:find("killer") or team:find("slasher") or team:find("hunter") or team:find("murderer") or team:find("beast") or team:find("monster")) and not (team:find("survivor") or team:find("victim")) then
+        if (team:find("killer") or team:find("slasher") or team:find("hunter") or team:find("murderer") or team:find("beast") or team:find("monster")) and not (team:find("survivor") or team:find("victim") or team:find("lobby")) then
             State.ActiveKiller = p
             return p
         end
@@ -320,7 +386,7 @@ local function ResolveSingleKiller()
         end
     end
 
-    -- Priority 3: Character & Backpack Weapon Arsenal Inspection
+    -- Priority 3: Character & Backpack Weapon Arsenal Inspection (Excludes common lobby fists)
     for _, p in ipairs(Services.Players:GetPlayers()) do
         local char = p.Character
         local bp = p:FindFirstChildOfClass("Backpack")
@@ -332,8 +398,8 @@ local function ResolveSingleKiller()
                         local tName = item.Name:lower()
                         if tName:find("knife") or tName:find("machete") or tName:find("chainsaw") or tName:find("cleaver") 
                             or tName:find("slasher") or tName:find("murderer") or tName:find("axe") or tName:find("hammer")
-                            or tName:find("bat") or tName:find("killerweapon") or tName:find("scythe") or tName:find("claws")
-                            or tName:find("blade") or tName:find("sword") or tName:find("sickle") or tName:find("pipe") or tName:find("fists") then
+                            or tName:find("killerweapon") or tName:find("scythe") or tName:find("claws")
+                            or tName:find("blade") or tName:find("sword") or tName:find("sickle") or tName:find("pipe") then
                             State.ActiveKiller = p
                             return p
                         end
@@ -395,13 +461,14 @@ end
 -- STRICT SINGLE KILLER VERIFICATION: Identifies if an opponent is the hostile Killer
 local function IsTargetKiller(p)
     if not p or p == LocalPlayer then return false end
+    if not IsGameStarted() then return false end
     if State.ActiveKiller and p == State.ActiveKiller then return true end
 
     local k = ResolveSingleKiller()
     if k and p == k then return true end
 
     local team = p.Team and p.Team.Name:lower() or ""
-    if (team:find("killer") or team:find("slasher") or team:find("hunter") or team:find("murderer") or team:find("beast") or team:find("stalker") or team:find("hidden") or team:find("abysswalker") or team:find("veil") or team:find("cure") or team:find("monster")) and not (team:find("survivor") or team:find("victim")) then
+    if (team:find("killer") or team:find("slasher") or team:find("hunter") or team:find("murderer") or team:find("beast") or team:find("stalker") or team:find("hidden") or team:find("abysswalker") or team:find("veil") or team:find("cure") or team:find("monster")) and not (team:find("survivor") or team:find("victim") or team:find("lobby")) then
         return true
     end
 
@@ -428,14 +495,6 @@ local function IsTargetKiller(p)
                     return true
                 end
             end
-        end
-    end
-
-    -- Fallback: If no active killer has been resolved yet, any non-survivor player could be the killer
-    if not State.ActiveKiller and not team:find("survivor") and not team:find("victim") then
-        local pRole = tostring(GetGameValue(p, "Role") or ""):lower()
-        if not pRole:find("survivor") and not pRole:find("victim") then
-            return true
         end
     end
 
@@ -1624,15 +1683,20 @@ local function ProcessEntities()
     local myChar = LocalPlayer.Character
     local myRoot = myChar and myChar:FindFirstChild("HumanoidRootPart")
     
-    -- Identify the exact single active match killer
-    local killer = ResolveSingleKiller()
+    local gameStarted = IsGameStarted()
+    -- Identify the exact single active match killer (ONLY when game has started!)
+    local killer = gameStarted and ResolveSingleKiller() or nil
     local killerChar = killer and killer.Character
     local killerRoot = killerChar and ResolveAnchorPart(killerChar)
     local killerLOS = false
     local killerDist = 9999
 
     -- Update Intel Cards with Reality Data
-    if killer then
+    if not gameStarted then
+        if CardRealKiller then CardRealKiller("LOBBY // WAITING FOR GAME START") end
+        if CardKillerStatus then CardKillerStatus("LOBBY / MATCH NOT ACTIVE") end
+        if CardMask then CardMask("NONE") end
+    elseif killer then
         local kDisplayName = killer.DisplayName
         local kUser = killer.Name
         local kClass = tostring(GetGameValue(killer, "SelectedKiller") or GetGameValue(killerChar, "SelectedKiller") or "KILLER")
@@ -1717,18 +1781,15 @@ local function ProcessEntities()
                     end
 
                     -- Visuals: Dedicated toggles for Killer ESP vs Player (Survivor) ESP
-                    local shouldShow = Config.Visuals.MasterESP and ((isKiller and Config.Visuals.KillerESP) or (not isKiller and Config.Visuals.SurvivorESP))
+                    -- Killer ESP is strictly shown ONLY when game has started!
+                    local isKillerActive = gameStarted and isKiller
+                    local shouldShow = Config.Visuals.MasterESP and ((isKillerActive and Config.Visuals.KillerESP) or (not isKillerActive and Config.Visuals.SurvivorESP))
                     if shouldShow then
-                        local color = isKiller and Config.Palette.Killer or Config.Palette.Survivor
-                        local isHooked = GetGameValue(char, "IsHooked")
-                        local isKnocked = GetGameValue(char, "Knocked") or (human and human.PlatformStand)
-
-                        if isHooked then color = Config.Palette.Hooked
-                        elseif isKnocked then color = Config.Palette.Downed
-                        elseif human and human.Health < human.MaxHealth then color = Config.Palette.Injured end
+                        -- STRICT COLOR ENFORCEMENT: ONLY Killer is RED, and ONLY Player is CYAN
+                        local color = isKillerActive and Config.Palette.Killer or Config.Palette.Survivor
 
                         local dist = myRoot and math.floor((rPos - myRoot.Position).Magnitude) or 0
-                        local tagText = isKiller 
+                        local tagText = isKillerActive 
                             and string.format("KILLER // %s", p.DisplayName:upper())
                             or string.format("PLAYER // %s", p.DisplayName:upper())
 
@@ -1738,14 +1799,17 @@ local function ProcessEntities()
 
                         local tag = root:FindFirstChild("ESP_Tag") or char:FindFirstChild("ESP_Tag")
                         if not tag then
-                            tag = BuildTag(tagText, color, Config.Visuals.HealthBars and human ~= nil)
+                            tag = BuildTag(tagText, color, not isKillerActive and Config.Visuals.HealthBars and human ~= nil)
                             tag.StudsOffset = Vector3.new(0, 3, 0)
                             tag.Adornee = root
                             tag.Parent = root
                             table.insert(State.Billboards, tag)
                         else
                             local lbl = tag:FindFirstChild("Label")
-                            if lbl then lbl.Text = tagText; lbl.TextColor3 = color end
+                            if lbl then 
+                                lbl.Text = tagText
+                                lbl.TextColor3 = color 
+                            end
                             local fill = tag:FindFirstChild("BarBG") and tag.BarBG:FindFirstChild("Fill")
                             if fill and human then
                                 fill.Size = UDim2.new(math.clamp(human.Health / human.MaxHealth, 0, 1), 0, 1, 0)
@@ -1753,7 +1817,7 @@ local function ProcessEntities()
                             end
                         end
 
-                        SafeHighlight(char, color, true) -- Top priority for all player character bodies!
+                        SafeHighlight(char, color, true) -- Full body 3D glowing chams (Killer RED, Player CYAN)!
                     else
                         local oldTag = char:FindFirstChild("ESP_Tag", true) or (root and root:FindFirstChild("ESP_Tag"))
                         if oldTag then oldTag:Destroy() end
