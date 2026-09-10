@@ -2149,6 +2149,87 @@ pcall(function()
     end
 end)
 
+-- Sleek Modern Floating On-Screen Menu Toggle Button (Touch & Mouse Drag Support)
+local FloatingToggle = Instance.new("TextButton", ScreenGui)
+FloatingToggle.Name = "606VD_FloatingToggle"
+FloatingToggle.Size = UDim2.new(0, 96, 0, 36)
+FloatingToggle.Position = UDim2.new(0, 20, 0.5, -18)
+FloatingToggle.BackgroundColor3 = Color3.fromRGB(15, 12, 18)
+FloatingToggle.BorderSizePixel = 0
+FloatingToggle.AutoButtonColor = false
+FloatingToggle.Text = ""
+Instance.new("UICorner", FloatingToggle).CornerRadius = UDim.new(0, 18)
+
+local StatusDot = Instance.new("Frame", FloatingToggle)
+StatusDot.Name = "StatusDot"
+StatusDot.Size = UDim2.new(0, 8, 0, 8)
+StatusDot.Position = UDim2.new(0, 12, 0.5, -4)
+StatusDot.BackgroundColor3 = Config.Palette.Survivor
+StatusDot.BorderSizePixel = 0
+Instance.new("UICorner", StatusDot).CornerRadius = UDim.new(1, 0)
+
+local BtnLabel = Instance.new("TextLabel", FloatingToggle)
+BtnLabel.Name = "Label"
+BtnLabel.Size = UDim2.new(1, -28, 1, 0)
+BtnLabel.Position = UDim2.new(0, 26, 0, 0)
+BtnLabel.BackgroundTransparency = 1
+BtnLabel.Font = Enum.Font.GothamBlack
+BtnLabel.Text = "606VD"
+BtnLabel.TextColor3 = Color3.fromRGB(240, 245, 255)
+BtnLabel.TextSize = 12
+BtnLabel.TextXAlignment = Enum.TextXAlignment.Left
+
+local isDragging = false
+local dragStartPos = nil
+local frameStartPos = nil
+local hasMoved = false
+
+FloatingToggle.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        isDragging = true
+        hasMoved = false
+        dragStartPos = input.Position
+        frameStartPos = FloatingToggle.Position
+
+        input.Changed:Connect(function()
+            if input.UserInputState == Enum.UserInputState.End then
+                isDragging = false
+                if not hasMoved then
+                    pcall(function()
+                        if Window and Window.Toggle then
+                            Window:Toggle()
+                        elseif Library and Library.Toggle then
+                            Library:Toggle()
+                        end
+                    end)
+                end
+            end
+        end)
+    end
+end)
+
+Services.Input.InputChanged:Connect(function(input)
+    if isDragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+        local delta = input.Position - dragStartPos
+        if delta.Magnitude > 4 then
+            hasMoved = true
+            FloatingToggle.Position = UDim2.new(
+                frameStartPos.X.Scale,
+                frameStartPos.X.Offset + delta.X,
+                frameStartPos.Y.Scale,
+                frameStartPos.Y.Offset + delta.Y
+            )
+        end
+    end
+end)
+
+FloatingToggle.MouseEnter:Connect(function()
+    Services.Tween:Create(FloatingToggle, TweenInfo.new(0.2), { BackgroundColor3 = Color3.fromRGB(25, 20, 32) }):Play()
+end)
+FloatingToggle.MouseLeave:Connect(function()
+    Services.Tween:Create(FloatingToggle, TweenInfo.new(0.2), { BackgroundColor3 = Color3.fromRGB(15, 12, 18) }):Play()
+end)
+
 ThreatRadarHUD = Instance.new("Frame", ScreenGui)
 ThreatRadarHUD.Name = "ThreatRadar"
 ThreatRadarHUD.Size = UDim2.new(0, 340, 0, 46)
@@ -2262,9 +2343,8 @@ end
 
 -- Create Obsidian Window
 local Window = Library:CreateWindow({
-    Title = "606VD // PRO REALITY SUITE",
+    Title = "606VD",
     Footer = "v1.12 // VIOLENCE DISTRICT",
-    Icon = 95816097006870,
     NotifySide = "Right",
     ShowCustomCursor = false,
     ToggleKeybind = Config.System.MenuKey
@@ -2344,6 +2424,7 @@ PlayerLeftBox:AddSlider("ParryDistance", {
     Max = 16,
     Rounding = 1,
     Suffix = " studs",
+    HideMax = true,
     Callback = function(v)
         Config.Combat.ParryDistance = v
     end
@@ -2377,6 +2458,7 @@ PlayerRightBox:AddSlider("PlayerSpeedVal", {
     Max = 45,
     Rounding = 0,
     Suffix = " studs/s",
+    HideMax = true,
     Callback = function(v)
         Config.Player.SpeedValue = v
     end
@@ -2448,6 +2530,7 @@ KillerLeftBox:AddSlider("KillerSpeedVal", {
     Max = 55,
     Rounding = 0,
     Suffix = " studs/s",
+    HideMax = true,
     Callback = function(v)
         Config.Killer.SpeedValue = v
     end
@@ -2514,6 +2597,7 @@ AutoLeftBox:AddSlider("ClickDelay", {
     Max = 100,
     Rounding = 0,
     Suffix = " ms",
+    HideMax = true,
     Callback = function(ms)
         Config.Automation.ClickDelay = ms / 1000
     end
@@ -2526,6 +2610,7 @@ AutoLeftBox:AddSlider("HitAngleStart", {
     Max = 115,
     Rounding = 0,
     Suffix = " deg",
+    HideMax = true,
     Callback = function(v)
         Config.Automation.HitAngleStart = v
     end
@@ -2538,6 +2623,7 @@ AutoLeftBox:AddSlider("HitAngleEnd", {
     Max = 128,
     Rounding = 0,
     Suffix = " deg",
+    HideMax = true,
     Callback = function(v)
         Config.Automation.HitAngleEnd = v
     end
@@ -2691,6 +2777,7 @@ VisualsRightBox:AddSlider("FOV", {
     Max = 120,
     Rounding = 0,
     Suffix = " fov",
+    HideMax = true,
     Callback = function(v)
         Config.Environment.FieldOfView = v
         Camera.FieldOfView = v
@@ -2740,6 +2827,7 @@ RadarRightBox:AddSlider("RadarRadius", {
     Max = 160,
     Rounding = 0,
     Suffix = " studs",
+    HideMax = true,
     Callback = function(v)
         Config.Radar.Radius = v
     end
